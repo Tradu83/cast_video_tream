@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Cast Receiver - Video Stream</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: 'Roboto', Arial, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 18px;
+            z-index: 1000;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 5px;
+        }
+        #error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 24px;
+            color: #ff4444;
+            text-align: center;
+            z-index: 1001;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">Đang khởi tạo Cast Receiver...</div>
+    <div id="error"></div>
+    <video id="video" controls autoplay playsinline></video>
+
+    <!-- Cast Receiver SDK -->
+    <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <script>
+        const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
+        const playerManager = castReceiverContext.getPlayerManager();
+
+        // Cấu hình player để xử lý các loại media
+        const playbackConfig = new cast.framework.messages.PlaybackConfig();
+        playbackConfig.autoResumeDuration = 0;
+        playbackConfig.autoPauseDuration = 0;
+        
+        playerManager.setPlaybackConfig(playbackConfig);
+
+        // Intercept LOAD message để xử lý media URL
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.LOAD,
+            loadRequestData => {
+                console.log('Load request received:', loadRequestData);
+                
+                const media = loadRequestData.media;
+                if (!media || !media.contentId) {
+                    console.error('No content ID in load request');
+                    showError('Không có URL video');
+                    return null;
+                }
+
+                const contentId = media.contentId;
+                const contentType = media.contentType || 'application/x-mpegURL';
+                
+                console.log('Content URL:', contentId);
+                console.log('Content Type:', contentType);
+
+                // Cập nhật status
+                updateStatus('Đang tải video...');
+
+                // Thiết lập video element
+                const videoElement = document.getElementById('video');
+                
+                // Xử lý các sự kiện video
+                videoElement.onloadstart = () => {
+                    console.log('Video load started');
+                    updateStatus('Đang tải video...');
+                };
+
+                videoElement.onloadedmetadata = () => {
+                    console.log('Video metadata loaded');
+                    updateStatus('');
+                };
+
+                videoElement.oncanplay = () => {
+                    console.log('Video can play');
+                    updateStatus('');
+                };
+
+                videoElement.onplay = () => {
+                    console.log('Video started playing');
+                    updateStatus('');
+                };
+
+                videoElement.onerror = (e) => {
+                    console.error('Video error:', e);
+                    const error = videoElement.error;
+                    let errorMsg = 'Lỗi khi tải video';
+                    if (error) {
+                        switch(error.code) {
+                            case error.MEDIA_ERR_ABORTED:
+                                errorMsg = 'Video bị hủy';
+                                break;
+                            case error.MEDIA_ERR_NETWORK:
+                                errorMsg = 'Lỗi mạng khi tải video';
+                                break;
+                            case error.MEDIA_ERR_DECODE:
+                                errorMsg = 'Lỗi giải mã video';
+                                break;
+                            case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                                errorMsg = 'Định dạng video không được hỗ trợ';
+                                break;
+                        }
+                    }
+                    showError(errorMsg);
+                    updateStatus('');
+                };
+
+                videoElement.onwaiting = () => {
+                    console.log('Video waiting for data');
+                    updateStatus('Đang tải dữ liệu...');
+                };
+
+                videoElement.onplaying = () => {
+                    console.log('Video playing');
+                    updateStatus('');
+                };
+
+                // Thiết lập nguồn video
+                videoElement.src = contentId;
+                videoElement.load();
+
+                // Trả về loadRequestData để Cast framework tiếp tục xử lý
+                return loadRequestData;
+            }
+        );
+
+        // Xử lý các sự kiện player
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
+            () => {
+                console.log('Player load complete');
+                updateStatus('');
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.ERROR,
+            (errorEvent) => {
+                console.error('Player error:', errorEvent);
+                const errorMsg = errorEvent.detailedErrorCode 
+                    ? `Lỗi: ${errorEvent.detailedErrorCode}` 
+                    : 'Lỗi không xác định';
+                showError(errorMsg);
+                updateStatus('');
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_LOAD_START,
+            () => {
+                console.log('Player load start');
+                updateStatus('Đang tải video...');
+            }
+        );
+
+        // Hàm cập nhật status
+        function updateStatus(message) {
+            const statusEl = document.getElementById('status');
+            if (message) {
+                statusEl.textContent = message;
+                statusEl.style.display = 'block';
+            } else {
+                statusEl.style.display = 'none';
+            }
+        }
+
+        // Hàm hiển thị lỗi
+        function showError(message) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 5000);
+        }
+
+        // Khởi động Cast Receiver
+        castReceiverContext.start({
+            statusText: 'Cast Receiver sẵn sàng'
+        });
+
+        console.log('Cast Receiver initialized with ID: 13EADC80');
+        updateStatus('Cast Receiver sẵn sàng');
+        
+        // Ẩn status sau 3 giây nếu không có video
+        setTimeout(() => {
+            const video = document.getElementById('video');
+            if (!video.src) {
+                updateStatus('');
+            }
+        }, 3000);
+    </script>
+</body>
+</html>
+
