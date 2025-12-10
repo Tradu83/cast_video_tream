@@ -3,128 +3,108 @@
 <head>
     <meta charset="utf-8">
     <title>Custom Cast Receiver</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: #000;
-            overflow: hidden;
-        }
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-        }
-    </style>
 </head>
 <body>
-    <video id="video" controls autoplay></video>
-    
     <!-- Cast Receiver SDK -->
     <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script>
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
-        const videoElement = document.getElementById('video');
         
-        // Intercept LOAD message để xử lý media URL với custom video element
+        // Log khi receiver khởi động
+        console.log('Cast Receiver: Initializing...');
+        
+        // Intercept LOAD message để đảm bảo MediaInfo được set đúng
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.LOAD,
             loadRequestData => {
                 try {
-                    console.log('Load request received:', JSON.stringify(loadRequestData));
+                    console.log('Cast Receiver: Load request received');
                     
                     const media = loadRequestData.media;
                     if (!media || !media.contentId) {
-                        console.error('No content ID in load request');
+                        console.error('Cast Receiver: No content ID in load request');
                         return null;
                     }
 
                     const contentId = media.contentId;
-                    const contentType = media.contentType || 'application/x-mpegURL';
-                    
-                    console.log('Content URL:', contentId);
-                    console.log('Content Type:', contentType);
+                    console.log('Cast Receiver: Content URL:', contentId);
+                    console.log('Cast Receiver: Content Type:', media.contentType);
 
-                    // Với M3U8 URLs, sử dụng video element để phát
+                    // Đảm bảo streamType và contentType được set đúng
+                    if (!media.streamType) {
+                        // Mặc định là LIVE cho stream video
+                        media.streamType = cast.framework.messages.StreamType.LIVE;
+                        console.log('Cast Receiver: Set streamType to LIVE');
+                    }
+                    
+                    if (!media.contentType) {
+                        // Xác định contentType dựa trên URL
+                        if (contentId.includes('.m3u8')) {
+                            media.contentType = 'application/x-mpegURL';
+                        } else if (contentId.includes('.mp4')) {
+                            media.contentType = 'video/mp4';
+                        } else {
+                            media.contentType = 'application/x-mpegURL'; // Mặc định cho live stream
+                        }
+                        console.log('Cast Receiver: Set contentType to', media.contentType);
+                    }
+
+                    // Với M3U8, đảm bảo streamType là LIVE
                     if (contentId.includes('.m3u8')) {
-                        console.log('M3U8 URL detected, using video element to play');
-                        
-                        // Thiết lập video element
-                        videoElement.src = contentId;
-                        videoElement.load();
-                        
-                        // Xử lý sự kiện video
-                        videoElement.onloadstart = () => {
-                            console.log('Video load started');
-                        };
-                        
-                        videoElement.onloadedmetadata = () => {
-                            console.log('Video metadata loaded');
-                        };
-                        
-                        videoElement.oncanplay = () => {
-                            console.log('Video can play');
-                            videoElement.play().catch(err => {
-                                console.error('Error playing video:', err);
-                            });
-                        };
-                        
-                        videoElement.onplay = () => {
-                            console.log('Video started playing');
-                        };
-                        
-                        videoElement.onerror = (e) => {
-                            console.error('Video error:', e);
-                            const error = videoElement.error;
-                            if (error) {
-                                console.error('Video error code:', error.code, 'message:', error.message);
-                            }
-                        };
-                        
-                        // Đảm bảo media object có đầy đủ thông tin
                         media.streamType = cast.framework.messages.StreamType.LIVE;
                         media.contentType = 'application/x-mpegURL';
-                        
-                        // Trả về loadRequestData để Cast framework biết đã xử lý
-                        return loadRequestData;
-                    } else {
-                        // Với các loại khác, để Cast framework tự xử lý
-                        if (!media.streamType) {
-                            media.streamType = cast.framework.messages.StreamType.LIVE;
-                        }
-                        if (!media.contentType) {
-                            media.contentType = contentType;
-                        }
-                        return loadRequestData;
+                        console.log('Cast Receiver: M3U8 detected, set streamType=LIVE, contentType=application/x-mpegURL');
                     }
+
+                    console.log('Cast Receiver: Returning load request with streamType:', media.streamType, 'contentType:', media.contentType);
+                    return loadRequestData;
                 } catch (error) {
-                    console.error('Error in LOAD interceptor:', error);
+                    console.error('Cast Receiver: Error in LOAD interceptor:', error);
                     return null;
                 }
             }
         );
 
-        // Xử lý các sự kiện player để debug
+        // Xử lý các sự kiện để debug
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
             () => {
-                console.log('Player load complete');
+                console.log('Cast Receiver: Player load complete');
             }
         );
 
         playerManager.addEventListener(
             cast.framework.events.EventType.ERROR,
             (errorEvent) => {
-                console.error('Player error:', errorEvent);
-                console.error('Error details:', JSON.stringify(errorEvent));
+                console.error('Cast Receiver: Player error:', errorEvent);
+                if (errorEvent.detailedErrorCode) {
+                    console.error('Cast Receiver: Error code:', errorEvent.detailedErrorCode);
+                }
+                if (errorEvent.error) {
+                    console.error('Cast Receiver: Error object:', JSON.stringify(errorEvent.error));
+                }
             }
         );
 
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_LOAD_START,
             () => {
-                console.log('Player load start');
+                console.log('Cast Receiver: Player load start');
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_PRELOADING,
+            () => {
+                console.log('Cast Receiver: Player preloading');
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_PLAYING,
+            () => {
+                console.log('Cast Receiver: Player playing');
             }
         );
 
@@ -132,10 +112,13 @@
         try {
             const options = new cast.framework.CastReceiverOptions();
             options.disableIdleTimeout = true;
+            // Thêm log khi khởi động
+            console.log('Cast Receiver: Starting with options:', JSON.stringify(options));
             context.start(options);
-            console.log('Cast Receiver started successfully');
+            console.log('Cast Receiver: Started successfully');
         } catch (error) {
-            console.error('Error starting Cast Receiver:', error);
+            console.error('Cast Receiver: Error starting:', error);
+            console.error('Cast Receiver: Error stack:', error.stack);
         }
     </script>
 </body>
