@@ -51,9 +51,18 @@
     <div id="error"></div>
     <video id="video" controls autoplay playsinline></video>
 
-    <!-- Cast Receiver SDK -->
-    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <!-- Cast Receiver SDK - Sử dụng HTTPS trực tiếp -->
+    <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script>
+        // Kiểm tra xem Cast SDK đã load chưa
+        if (typeof cast === 'undefined' || !cast.framework) {
+            console.error('Cast SDK không thể load được!');
+            document.getElementById('error').textContent = 'Lỗi: Không thể load Cast SDK';
+            document.getElementById('error').style.display = 'block';
+        } else {
+            console.log('Cast SDK đã load thành công');
+        }
+        
         const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
         const playerManager = castReceiverContext.getPlayerManager();
 
@@ -204,12 +213,17 @@
         }
 
         // Khởi động Cast Receiver
-        const options = new cast.framework.CastReceiverOptions();
-        options.disableIdleTimeout = true;
-        castReceiverContext.start(options);
+        try {
+            const options = new cast.framework.CastReceiverOptions();
+            options.disableIdleTimeout = true;
+            castReceiverContext.start(options);
 
-        console.log('Cast Receiver initialized with ID: 13EADC80');
-        updateStatus('Cast Receiver sẵn sàng');
+            console.log('Cast Receiver initialized successfully');
+            updateStatus('Cast Receiver sẵn sàng');
+        } catch (error) {
+            console.error('Lỗi khi khởi động Cast Receiver:', error);
+            showError('Lỗi khởi động Cast Receiver: ' + error.message);
+        }
         
         // Ẩn status sau 3 giây nếu không có video
         setTimeout(() => {
@@ -221,4 +235,3 @@
     </script>
 </body>
 </html>
-
