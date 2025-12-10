@@ -2,74 +2,156 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Custom Cast Receiver</title>
+    <title>Custom Cast Receiver - Stream Player</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+            font-size: 14px;
+        }
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+    </style>
 </head>
 <body>
+    <div id="status">Cast Receiver: Đang khởi động...</div>
+    <video id="video" controls autoplay playsinline></video>
+    
     <!-- Cast Receiver SDK -->
     <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script>
         const context = cast.framework.CastReceiverContext.getInstance();
         const playerManager = context.getPlayerManager();
+        const videoElement = document.getElementById('video');
+        const statusElement = document.getElementById('status');
+        
+        function updateStatus(message) {
+            statusElement.textContent = 'Cast Receiver: ' + message;
+            console.log('Cast Receiver: ' + message);
+        }
         
         // Log khi receiver khởi động
-        console.log('Cast Receiver: Initializing...');
+        updateStatus('Đang khởi động...');
         
-        // Intercept LOAD message để đảm bảo MediaInfo được set đúng
+        // Intercept LOAD message để xử lý stream URL trực tiếp
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.LOAD,
             loadRequestData => {
                 try {
-                    console.log('Cast Receiver: Load request received');
+                    updateStatus('Đang nhận request...');
+                    console.log('Cast Receiver: Load request received:', JSON.stringify(loadRequestData));
                     
                     const media = loadRequestData.media;
                     if (!media || !media.contentId) {
                         console.error('Cast Receiver: No content ID in load request');
+                        updateStatus('Lỗi: Không có URL stream');
                         return null;
                     }
 
                     const contentId = media.contentId;
+                    updateStatus('Đang tải: ' + contentId.substring(0, 50) + '...');
                     console.log('Cast Receiver: Content URL:', contentId);
                     console.log('Cast Receiver: Content Type:', media.contentType);
 
-                    // Đảm bảo streamType và contentType được set đúng
-                    if (!media.streamType) {
-                        // Mặc định là LIVE cho stream video
-                        media.streamType = cast.framework.messages.StreamType.LIVE;
-                        console.log('Cast Receiver: Set streamType to LIVE');
-                    }
-                    
-                    if (!media.contentType) {
-                        // Xác định contentType dựa trên URL
-                        if (contentId.includes('.m3u8')) {
-                            media.contentType = 'application/x-mpegURL';
-                        } else if (contentId.includes('.mp4')) {
-                            media.contentType = 'video/mp4';
-                        } else {
-                            media.contentType = 'application/x-mpegURL'; // Mặc định cho live stream
-                        }
-                        console.log('Cast Receiver: Set contentType to', media.contentType);
-                    }
-
-                    // Với M3U8, đảm bảo streamType là LIVE
-                    if (contentId.includes('.m3u8')) {
+                    // Với M3U8 hoặc stream URL, sử dụng video element để phát trực tiếp
+                    if (contentId.includes('.m3u8') || contentId.includes('fast5cdn.net') || contentId.includes('xlz.livecdnem.com')) {
+                        updateStatus('Đang phát M3U8 stream...');
+                        console.log('Cast Receiver: M3U8/Stream URL detected, using video element');
+                        
+                        // Thiết lập video element
+                        videoElement.src = contentId;
+                        videoElement.load();
+                        
+                        // Xử lý sự kiện video
+                        videoElement.onloadstart = () => {
+                            updateStatus('Đang tải video...');
+                            console.log('Cast Receiver: Video load started');
+                        };
+                        
+                        videoElement.onloadedmetadata = () => {
+                            updateStatus('Đã tải metadata, đang phát...');
+                            console.log('Cast Receiver: Video metadata loaded');
+                        };
+                        
+                        videoElement.oncanplay = () => {
+                            updateStatus('Đang phát video...');
+                            console.log('Cast Receiver: Video can play');
+                            videoElement.play().catch(err => {
+                                console.error('Cast Receiver: Error playing video:', err);
+                                updateStatus('Lỗi phát video: ' + err.message);
+                            });
+                        };
+                        
+                        videoElement.onplay = () => {
+                            updateStatus('Đang phát');
+                            console.log('Cast Receiver: Video started playing');
+                        };
+                        
+                        videoElement.onerror = (e) => {
+                            console.error('Cast Receiver: Video error:', e);
+                            const error = videoElement.error;
+                            if (error) {
+                                const errorMsg = 'Lỗi: ' + error.code + ' - ' + error.message;
+                                updateStatus(errorMsg);
+                                console.error('Cast Receiver: Video error code:', error.code, 'message:', error.message);
+                            }
+                        };
+                        
+                        videoElement.onwaiting = () => {
+                            updateStatus('Đang buffering...');
+                            console.log('Cast Receiver: Video buffering');
+                        };
+                        
+                        videoElement.onplaying = () => {
+                            updateStatus('Đang phát');
+                            console.log('Cast Receiver: Video playing');
+                        };
+                        
+                        // Đảm bảo media object có đầy đủ thông tin cho Cast framework
                         media.streamType = cast.framework.messages.StreamType.LIVE;
                         media.contentType = 'application/x-mpegURL';
-                        console.log('Cast Receiver: M3U8 detected, set streamType=LIVE, contentType=application/x-mpegURL');
+                        
+                        // Trả về loadRequestData để Cast framework biết đã xử lý
+                        return loadRequestData;
+                    } else {
+                        // Với các loại khác, để Cast framework tự xử lý
+                        if (!media.streamType) {
+                            media.streamType = cast.framework.messages.StreamType.LIVE;
+                        }
+                        if (!media.contentType) {
+                            media.contentType = media.contentType || 'application/x-mpegURL';
+                        }
+                        return loadRequestData;
                     }
-
-                    console.log('Cast Receiver: Returning load request with streamType:', media.streamType, 'contentType:', media.contentType);
-                    return loadRequestData;
                 } catch (error) {
                     console.error('Cast Receiver: Error in LOAD interceptor:', error);
+                    updateStatus('Lỗi: ' + error.message);
                     return null;
                 }
             }
         );
 
-        // Xử lý các sự kiện để debug
+        // Xử lý các sự kiện player để debug
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
             () => {
+                updateStatus('Tải hoàn tất');
                 console.log('Cast Receiver: Player load complete');
             }
         );
@@ -78,6 +160,7 @@
             cast.framework.events.EventType.ERROR,
             (errorEvent) => {
                 console.error('Cast Receiver: Player error:', errorEvent);
+                updateStatus('Lỗi player: ' + (errorEvent.detailedErrorCode || 'Unknown'));
                 if (errorEvent.detailedErrorCode) {
                     console.error('Cast Receiver: Error code:', errorEvent.detailedErrorCode);
                 }
@@ -90,20 +173,15 @@
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_LOAD_START,
             () => {
+                updateStatus('Bắt đầu tải...');
                 console.log('Cast Receiver: Player load start');
-            }
-        );
-
-        playerManager.addEventListener(
-            cast.framework.events.EventType.PLAYER_PRELOADING,
-            () => {
-                console.log('Cast Receiver: Player preloading');
             }
         );
 
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_PLAYING,
             () => {
+                updateStatus('Đang phát');
                 console.log('Cast Receiver: Player playing');
             }
         );
@@ -112,13 +190,15 @@
         try {
             const options = new cast.framework.CastReceiverOptions();
             options.disableIdleTimeout = true;
-            // Thêm log khi khởi động
+            updateStatus('Đang khởi động receiver...');
             console.log('Cast Receiver: Starting with options:', JSON.stringify(options));
             context.start(options);
+            updateStatus('Sẵn sàng nhận stream');
             console.log('Cast Receiver: Started successfully');
         } catch (error) {
             console.error('Cast Receiver: Error starting:', error);
             console.error('Cast Receiver: Error stack:', error.stack);
+            updateStatus('Lỗi khởi động: ' + error.message);
         }
     </script>
 </body>
