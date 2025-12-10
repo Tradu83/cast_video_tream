@@ -18,11 +18,6 @@
             width: 100vw;
             height: 100vh;
         }
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-        }
         #status {
             position: absolute;
             top: 20px;
@@ -49,7 +44,6 @@
 <body>
     <div id="status">Đang khởi tạo Cast Receiver...</div>
     <div id="error"></div>
-    <video id="video" controls autoplay playsinline></video>
 
     <!-- Cast Receiver SDK - Sử dụng HTTPS trực tiếp -->
     <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -77,88 +71,41 @@
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.LOAD,
             loadRequestData => {
-                console.log('Load request received:', loadRequestData);
-                
-                const media = loadRequestData.media;
-                if (!media || !media.contentId) {
-                    console.error('No content ID in load request');
-                    showError('Không có URL video');
+                try {
+                    console.log('Load request received:', JSON.stringify(loadRequestData));
+                    
+                    const media = loadRequestData.media;
+                    if (!media || !media.contentId) {
+                        console.error('No content ID in load request');
+                        showError('Không có URL video');
+                        return null;
+                    }
+
+                    const contentId = media.contentId;
+                    const contentType = media.contentType || 'application/x-mpegURL';
+                    
+                    console.log('Content URL:', contentId);
+                    console.log('Content Type:', contentType);
+
+                    // Cập nhật status
+                    updateStatus('Đang tải video...');
+
+                    // Đảm bảo media object có đầy đủ thông tin
+                    if (!media.streamType) {
+                        media.streamType = cast.framework.messages.StreamType.LIVE;
+                    }
+                    if (!media.contentType) {
+                        media.contentType = contentType;
+                    }
+
+                    // Trả về loadRequestData để Cast framework tự xử lý
+                    console.log('Returning load request data');
+                    return loadRequestData;
+                } catch (error) {
+                    console.error('Error in LOAD interceptor:', error);
+                    showError('Lỗi xử lý request: ' + error.message);
                     return null;
                 }
-
-                const contentId = media.contentId;
-                const contentType = media.contentType || 'application/x-mpegURL';
-                
-                console.log('Content URL:', contentId);
-                console.log('Content Type:', contentType);
-
-                // Cập nhật status
-                updateStatus('Đang tải video...');
-
-                // Thiết lập video element
-                const videoElement = document.getElementById('video');
-                
-                // Xử lý các sự kiện video
-                videoElement.onloadstart = () => {
-                    console.log('Video load started');
-                    updateStatus('Đang tải video...');
-                };
-
-                videoElement.onloadedmetadata = () => {
-                    console.log('Video metadata loaded');
-                    updateStatus('');
-                };
-
-                videoElement.oncanplay = () => {
-                    console.log('Video can play');
-                    updateStatus('');
-                };
-
-                videoElement.onplay = () => {
-                    console.log('Video started playing');
-                    updateStatus('');
-                };
-
-                videoElement.onerror = (e) => {
-                    console.error('Video error:', e);
-                    const error = videoElement.error;
-                    let errorMsg = 'Lỗi khi tải video';
-                    if (error) {
-                        switch(error.code) {
-                            case error.MEDIA_ERR_ABORTED:
-                                errorMsg = 'Video bị hủy';
-                                break;
-                            case error.MEDIA_ERR_NETWORK:
-                                errorMsg = 'Lỗi mạng khi tải video';
-                                break;
-                            case error.MEDIA_ERR_DECODE:
-                                errorMsg = 'Lỗi giải mã video';
-                                break;
-                            case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-                                errorMsg = 'Định dạng video không được hỗ trợ';
-                                break;
-                        }
-                    }
-                    showError(errorMsg);
-                    updateStatus('');
-                };
-
-                videoElement.onwaiting = () => {
-                    console.log('Video waiting for data');
-                    updateStatus('Đang tải dữ liệu...');
-                };
-
-                videoElement.onplaying = () => {
-                    console.log('Video playing');
-                    updateStatus('');
-                };
-
-                // Thiết lập nguồn video
-                videoElement.src = contentId;
-                videoElement.load();
-
-                // Trả về loadRequestData để Cast framework tiếp tục xử lý
-                return loadRequestData;
             }
         );
 
@@ -216,6 +163,7 @@
         try {
             const options = new cast.framework.CastReceiverOptions();
             options.disableIdleTimeout = true;
+            // Không set custom video element, để Cast framework tự xử lý
             castReceiverContext.start(options);
 
             console.log('Cast Receiver initialized successfully');
@@ -225,12 +173,9 @@
             showError('Lỗi khởi động Cast Receiver: ' + error.message);
         }
         
-        // Ẩn status sau 3 giây nếu không có video
+        // Ẩn status sau 3 giây
         setTimeout(() => {
-            const video = document.getElementById('video');
-            if (!video.src) {
-                updateStatus('');
-            }
+            updateStatus('');
         }, 3000);
     </script>
 </body>
