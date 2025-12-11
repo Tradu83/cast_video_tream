@@ -166,33 +166,12 @@
         );
 
         // Xử lý các sự kiện player
-        playerManager.addEventListener(
-            cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
-            () => {
-                console.log('Player load complete');
-                updateStatus('');
-            }
-        );
-
-        playerManager.addEventListener(
-            cast.framework.events.EventType.ERROR,
-            (errorEvent) => {
-                console.error('Player error:', errorEvent);
-                const errorMsg = errorEvent.detailedErrorCode 
-                    ? `Lỗi: ${errorEvent.detailedErrorCode}` 
-                    : 'Lỗi không xác định';
-                showError(errorMsg);
-                updateStatus('');
-            }
-        );
-
-        playerManager.addEventListener(
-            cast.framework.events.EventType.PLAYER_LOAD_START,
-            () => {
-                console.log('Player load start');
-                updateStatus('Đang tải video...');
-            }
-        );
+        // Lưu ý: Trong Cast SDK v3, một số event type có thể không khả dụng
+        // Tạm thời comment out để tránh lỗi "invalid event type"
+        // Có thể sử dụng video element events thay thế (đã có ở trên)
+        
+        console.log('Skipping PlayerManager event listeners (may not be needed in Cast SDK v3)');
+        console.log('Using video element events instead for status updates');
 
         // Hàm cập nhật status
         function updateStatus(message) {
