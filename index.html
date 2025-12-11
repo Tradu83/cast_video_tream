@@ -49,7 +49,8 @@
 <body>
     <div id="status">Đang khởi tạo Cast Receiver...</div>
     <div id="error"></div>
-    <video id="video" controls autoplay playsinline></video>
+    <!-- Video element cho Cast framework player -->
+    <video id="video" style="width: 100%; height: 100%; position: absolute; top: 0; left: 0;" controls autoplay playsinline></video>
 
     <!-- Cast Receiver SDK -->
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -154,7 +155,9 @@
             return headers;
         }
 
-        // Intercept LOAD message để xử lý media URL với headers
+        // Intercept LOAD message để tự xử lý media với headers
+        // Với progressive streams: dùng fetch + blob URL
+        // Với HLS streams: Service Worker sẽ intercept requests
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.LOAD,
             async (loadRequestData) => {
@@ -241,6 +244,7 @@
                 // Xử lý tải media với headers
                 const isHlsStream = contentType.includes('mpegURL') || 
                                    contentType.includes('hls') || 
+                                   contentType.includes('application/x-mpegURL') ||
                                    contentId.includes('.m3u8');
                 
                 if (isHlsStream) {
@@ -251,7 +255,7 @@
                     videoElement.src = contentId;
                     videoElement.load();
                 } else {
-                    // Với progressive streams, có thể dùng Fetch API + Blob URL
+                    // Với progressive streams, dùng Fetch API + Blob URL để thêm headers
                     try {
                         console.log('Progressive stream detected, fetching with headers...');
                         updateStatus('Đang tải với headers...');
@@ -283,16 +287,17 @@
                         
                     } catch (error) {
                         console.error('Error fetching media with headers:', error);
-                        console.log('Fallback: loading directly without headers');
+                        console.log('Fallback: loading directly (Service Worker may add headers)');
                         updateStatus('Thử tải trực tiếp...');
-                        // Fallback: thử load trực tiếp
+                        // Fallback: thử load trực tiếp (Service Worker có thể thêm headers)
                         videoElement.src = contentId;
                         videoElement.load();
                     }
                 }
 
-                // Trả về loadRequestData để Cast framework tiếp tục xử lý
-                return loadRequestData;
+                // Trả về null để ngăn Cast framework tự xử lý
+                // Chúng ta đã tự xử lý với video element
+                return null;
             }
         );
 
@@ -379,13 +384,37 @@
             showError('Lỗi promise: ' + event.reason);
         });
         
-        // Ẩn status sau 3 giây nếu không có video
-        setTimeout(() => {
-            const video = document.getElementById('video');
-            if (!video.src) {
+        // Xử lý các sự kiện player từ Cast framework
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_LOAD_START,
+            () => {
+                console.log('Player load start');
+                updateStatus('Đang tải video...');
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
+            () => {
+                console.log('Player load complete');
                 updateStatus('');
             }
-        }, 3000);
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_PLAY,
+            () => {
+                console.log('Player playing');
+                updateStatus('');
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_PAUSE,
+            () => {
+                console.log('Player paused');
+            }
+        );
     </script>
 </body>
 </html>
