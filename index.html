@@ -58,13 +58,19 @@
         console.log('Loading Cast Receiver SDK...');
         
         // Register Service Worker để thêm headers vào requests
+        // Lưu ý: Service Worker chỉ hoạt động trên HTTPS hoặc localhost
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/service-worker.js')
+            // Sử dụng đường dẫn tương đối từ root
+            const swPath = './service-worker.js';
+            navigator.serviceWorker.register(swPath)
                 .then((registration) => {
                     console.log('Service Worker registered successfully:', registration.scope);
+                    console.log('Service Worker will add Referer headers to video requests');
                 })
                 .catch((error) => {
                     console.warn('Service Worker registration failed:', error);
+                    console.warn('This is OK - video may still play, but headers may not be added');
+                    console.warn('To fix: Deploy service-worker.js to GitHub repository root');
                 });
         } else {
             console.warn('Service Worker not supported in this browser');
@@ -238,19 +244,10 @@
             console.warn('Could not register PLAYER_LOAD_COMPLETE event listener:', error);
         }
         
-        try {
-            // Lắng nghe sự kiện PLAYER_LOAD_START
-            playerManager.addEventListener(
-                cast.framework.events.EventType.PLAYER_LOAD_START,
-                () => {
-                    console.log('=== PLAYER LOAD START ===');
-                    updateStatus('Đang tải video...');
-                }
-            );
-            console.log('PLAYER_LOAD_START event listener registered');
-        } catch (error) {
-            console.warn('Could not register PLAYER_LOAD_START event listener:', error);
-        }
+        // Lưu ý: PLAYER_LOAD_START không tồn tại trong Cast SDK v3
+        // Thay vào đó, sử dụng LOAD message interceptor để log khi bắt đầu load
+        // (Đã có logging trong LOAD message interceptor ở trên)
+        console.log('Skipping PLAYER_LOAD_START event listener (not available in Cast SDK v3)');
 
         // Hàm cập nhật status
         function updateStatus(message) {
