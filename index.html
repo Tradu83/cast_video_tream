@@ -57,37 +57,60 @@
         // Đăng ký Service Worker để hỗ trợ headers cho HLS streams
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Sử dụng đường dẫn tương đối từ root để hoạt động với cả index.html và cast_receiver.html
-                const swPath = '/service-worker.js';
-                navigator.serviceWorker.register(swPath, { scope: '/' })
-                    .then((registration) => {
-                        console.log('Service Worker registered successfully:', registration.scope);
-                        // Đảm bảo service worker active ngay lập tức
-                        if (registration.active) {
-                            console.log('Service Worker is active');
-                        } else if (registration.installing) {
-                            console.log('Service Worker is installing');
-                            registration.installing.addEventListener('statechange', (e) => {
-                                if (e.target.state === 'activated') {
-                                    console.log('Service Worker activated');
-                                }
+                // Thử nhiều đường dẫn để đảm bảo Service Worker được đăng ký
+                const swPaths = [
+                    '/service-worker.js',
+                    './service-worker.js',
+                    'service-worker.js'
+                ];
+                
+                let registrationAttempted = false;
+                
+                const tryRegister = (path, index) => {
+                    if (registrationAttempted && index > 0) return;
+                    
+                    console.log(`Attempting to register Service Worker with path: ${path}`);
+                    navigator.serviceWorker.register(path, { scope: '/' })
+                        .then((registration) => {
+                            registrationAttempted = true;
+                            console.log('Service Worker registered successfully:', registration.scope);
+                            console.log('Service Worker script URL:', registration.active?.scriptURL || registration.installing?.scriptURL);
+                            
+                            // Đảm bảo service worker active ngay lập tức
+                            if (registration.active) {
+                                console.log('Service Worker is active');
+                            } else if (registration.installing) {
+                                console.log('Service Worker is installing');
+                                registration.installing.addEventListener('statechange', (e) => {
+                                    console.log('Service Worker state changed:', e.target.state);
+                                    if (e.target.state === 'activated') {
+                                        console.log('Service Worker activated');
+                                    }
+                                });
+                            } else if (registration.waiting) {
+                                console.log('Service Worker is waiting, activating...');
+                                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                            }
+                            
+                            // Force update nếu cần
+                            registration.update().catch(err => {
+                                console.warn('Service Worker update failed:', err);
                             });
-                        }
-                        // Force update nếu cần
-                        registration.update();
-                    })
-                    .catch((error) => {
-                        console.error('Service Worker registration failed:', error);
-                        // Thử với đường dẫn tương đối nếu đường dẫn tuyệt đối thất bại
-                        console.log('Retrying with relative path...');
-                        navigator.serviceWorker.register('service-worker.js', { scope: './' })
-                            .then((reg) => {
-                                console.log('Service Worker registered with relative path:', reg.scope);
-                            })
-                            .catch((err) => {
-                                console.error('Service Worker registration failed again:', err);
-                            });
-                    });
+                        })
+                        .catch((error) => {
+                            console.error(`Service Worker registration failed with path ${path}:`, error);
+                            // Thử đường dẫn tiếp theo
+                            if (index < swPaths.length - 1) {
+                                console.log(`Trying next path: ${swPaths[index + 1]}`);
+                                setTimeout(() => tryRegister(swPaths[index + 1], index + 1), 500);
+                            } else {
+                                console.warn('All Service Worker registration attempts failed. Headers may not work for HLS streams.');
+                            }
+                        });
+                };
+                
+                // Bắt đầu thử với đường dẫn đầu tiên
+                tryRegister(swPaths[0], 0);
             });
         } else {
             console.warn('Service Workers are not supported in this browser');
@@ -323,15 +346,38 @@
             }, 5000);
         }
 
-        // Khởi động Cast Receiver
-        const options = new cast.framework.CastReceiverOptions();
-        options.disableIdleTimeout = true;
-        castReceiverContext.start(options);
-
-        // Log App ID - cập nhật theo App ID bạn đã đăng ký
-        console.log('Cast Receiver initialized');
-        // App ID được cấu hình trong Google Cast Developer Console
-        updateStatus('Cast Receiver sẵn sàng');
+        // Xử lý lỗi khi khởi động Cast Receiver
+        try {
+            // Khởi động Cast Receiver
+            const options = new cast.framework.CastReceiverOptions();
+            options.disableIdleTimeout = true;
+            
+            // Thêm error handler
+            castReceiverContext.addCustomMessageListener('urn:x-cast:com.google.cast.debug', (data) => {
+                console.log('Custom message received:', data);
+            });
+            
+            castReceiverContext.start(options);
+            
+            console.log('Cast Receiver initialized successfully');
+            updateStatus('Cast Receiver sẵn sàng');
+            
+        } catch (error) {
+            console.error('Error initializing Cast Receiver:', error);
+            showError('Lỗi khởi tạo Cast Receiver: ' + error.message);
+            updateStatus('Lỗi khởi tạo');
+        }
+        
+        // Xử lý lỗi toàn cục
+        window.addEventListener('error', (event) => {
+            console.error('Global error:', event.error);
+            showError('Lỗi: ' + (event.error ? event.error.message : event.message));
+        });
+        
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Unhandled promise rejection:', event.reason);
+            showError('Lỗi promise: ' + event.reason);
+        });
         
         // Ẩn status sau 3 giây nếu không có video
         setTimeout(() => {
