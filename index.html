@@ -90,12 +90,48 @@
                 }
 
                 const contentId = media.contentId;
-                const contentType = media.contentType || 'application/x-mpegURL';
+                let contentType = media.contentType || 'application/x-mpegURL';
                 
                 console.log('Content URL:', contentId);
-                console.log('Content Type:', contentType);
+                console.log('Original Content Type:', contentType);
                 console.log('Stream Type:', media.streamType);
                 console.log('Media metadata:', media.metadata);
+
+                // Kiểm tra và xử lý các định dạng không được hỗ trợ
+                const urlLower = contentId.toLowerCase();
+                
+                // FLV không được Cast receiver hỗ trợ
+                if (urlLower.includes('.flv')) {
+                    console.error('=== ERROR: FLV format is not supported by Cast receiver ===');
+                    console.error('FLV files cannot be played on Cast devices');
+                    console.error('Please use MP4, HLS (m3u8), or DASH (mpd) format instead');
+                    showError('Định dạng FLV không được hỗ trợ. Vui lòng sử dụng MP4, HLS hoặc DASH.');
+                    updateStatus('Lỗi: FLV không được hỗ trợ');
+                    return null; // Reject load request
+                }
+                
+                // Tự động sửa ContentType nếu không đúng
+                if (urlLower.includes('.m3u8') || urlLower.includes('hls')) {
+                    contentType = 'application/x-mpegURL';
+                    console.log('Auto-detected HLS stream, setting ContentType to:', contentType);
+                } else if (urlLower.includes('.mpd') || urlLower.includes('dash')) {
+                    contentType = 'application/dash+xml';
+                    console.log('Auto-detected DASH stream, setting ContentType to:', contentType);
+                } else if (urlLower.includes('.mp4')) {
+                    contentType = 'video/mp4';
+                    console.log('Auto-detected MP4 stream, setting ContentType to:', contentType);
+                } else if (urlLower.includes('.webm')) {
+                    contentType = 'video/webm';
+                    console.log('Auto-detected WebM stream, setting ContentType to:', contentType);
+                }
+                
+                // Cập nhật ContentType trong loadRequestData nếu đã thay đổi
+                if (contentType !== media.contentType) {
+                    console.log('Updating ContentType from', media.contentType, 'to', contentType);
+                    media.contentType = contentType;
+                }
+                
+                console.log('Final Content Type:', contentType);
 
                 // Cập nhật status
                 updateStatus('Đang tải video...');
@@ -118,8 +154,53 @@
         // Tạm thời comment out để tránh lỗi "invalid event type"
         // Có thể sử dụng video element events thay thế (đã có ở trên)
         
-        console.log('Skipping PlayerManager event listeners (may not be needed in Cast SDK v3)');
-        console.log('Using video element events instead for status updates');
+        // Thêm event listeners để log lỗi và trạng thái
+        try {
+            // Lắng nghe sự kiện ERROR từ PlayerManager
+            playerManager.addEventListener(
+                cast.framework.events.EventType.ERROR,
+                (errorEvent) => {
+                    console.error('=== PLAYER ERROR EVENT ===');
+                    console.error('Error details:', errorEvent);
+                    console.error('Error type:', errorEvent.type);
+                    console.error('Error data:', errorEvent.detailedErrorCode);
+                    showError('Lỗi phát video: ' + (errorEvent.detailedErrorCode || 'Unknown error'));
+                    updateStatus('Lỗi phát video');
+                }
+            );
+            console.log('ERROR event listener registered');
+        } catch (error) {
+            console.warn('Could not register ERROR event listener:', error);
+        }
+        
+        try {
+            // Lắng nghe sự kiện PLAYER_LOAD_COMPLETE
+            playerManager.addEventListener(
+                cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
+                () => {
+                    console.log('=== PLAYER LOAD COMPLETE ===');
+                    updateStatus('Video đã tải xong');
+                    setTimeout(() => updateStatus(''), 2000);
+                }
+            );
+            console.log('PLAYER_LOAD_COMPLETE event listener registered');
+        } catch (error) {
+            console.warn('Could not register PLAYER_LOAD_COMPLETE event listener:', error);
+        }
+        
+        try {
+            // Lắng nghe sự kiện PLAYER_LOAD_START
+            playerManager.addEventListener(
+                cast.framework.events.EventType.PLAYER_LOAD_START,
+                () => {
+                    console.log('=== PLAYER LOAD START ===');
+                    updateStatus('Đang tải video...');
+                }
+            );
+            console.log('PLAYER_LOAD_START event listener registered');
+        } catch (error) {
+            console.warn('Could not register PLAYER_LOAD_START event listener:', error);
+        }
 
         // Hàm cập nhật status
         function updateStatus(message) {
