@@ -57,7 +57,9 @@
         // Đăng ký Service Worker để hỗ trợ headers cho HLS streams
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js')
+                // Sử dụng đường dẫn tương đối từ root để hoạt động với cả index.html và cast_receiver.html
+                const swPath = '/service-worker.js';
+                navigator.serviceWorker.register(swPath, { scope: '/' })
                     .then((registration) => {
                         console.log('Service Worker registered successfully:', registration.scope);
                         // Đảm bảo service worker active ngay lập tức
@@ -71,9 +73,20 @@
                                 }
                             });
                         }
+                        // Force update nếu cần
+                        registration.update();
                     })
                     .catch((error) => {
                         console.error('Service Worker registration failed:', error);
+                        // Thử với đường dẫn tương đối nếu đường dẫn tuyệt đối thất bại
+                        console.log('Retrying with relative path...');
+                        navigator.serviceWorker.register('service-worker.js', { scope: './' })
+                            .then((reg) => {
+                                console.log('Service Worker registered with relative path:', reg.scope);
+                            })
+                            .catch((err) => {
+                                console.error('Service Worker registration failed again:', err);
+                            });
                     });
             });
         } else {
@@ -315,7 +328,9 @@
         options.disableIdleTimeout = true;
         castReceiverContext.start(options);
 
-        console.log('Cast Receiver initialized with ID: 13EADC80');
+        // Log App ID - cập nhật theo App ID bạn đã đăng ký
+        console.log('Cast Receiver initialized');
+        // App ID được cấu hình trong Google Cast Developer Console
         updateStatus('Cast Receiver sẵn sàng');
         
         // Ẩn status sau 3 giây nếu không có video
