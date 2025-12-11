@@ -54,6 +54,8 @@
 
     <!-- Cast Receiver SDK -->
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <!-- hls.js for HLS stream support with custom headers -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script>
         // Đăng ký Service Worker để hỗ trợ headers cho HLS streams
         if ('serviceWorker' in navigator) {
@@ -248,12 +250,69 @@
                                    contentId.includes('.m3u8');
                 
                 if (isHlsStream) {
-                    // Với HLS streams, Service Worker sẽ intercept requests và thêm headers
-                    // Tất cả requests (manifest .m3u8 và segments .ts) sẽ được Service Worker xử lý
-                    console.log('HLS stream detected, Service Worker will add headers to all requests');
+                    // Với HLS streams, dùng hls.js để tự xử lý với custom headers
+                    console.log('HLS stream detected, using hls.js with custom headers');
                     updateStatus('Đang tải HLS stream với headers...');
-                    videoElement.src = contentId;
-                    videoElement.load();
+                    
+                    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+                        // Sử dụng hls.js để xử lý HLS với custom headers
+                        const hls = new Hls({
+                            xhrSetup: function(xhr, url) {
+                                // Thêm custom headers vào mỗi request (manifest + segments)
+                                console.log('hls.js xhrSetup for URL:', url);
+                                const requestHeaders = getHeadersForUrl(url);
+                                Object.keys(requestHeaders).forEach(key => {
+                                    xhr.setRequestHeader(key, requestHeaders[key]);
+                                    console.log(`Added header: ${key} = ${requestHeaders[key]}`);
+                                });
+                            },
+                            enableWorker: true,
+                            lowLatencyMode: false
+                        });
+                        
+                        hls.loadSource(contentId);
+                        hls.attachMedia(videoElement);
+                        
+                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                            console.log('HLS manifest parsed, starting playback');
+                            updateStatus('');
+                            videoElement.play().catch(err => {
+                                console.error('Error playing video:', err);
+                                showError('Lỗi khi phát video');
+                            });
+                        });
+                        
+                        hls.on(Hls.Events.ERROR, (event, data) => {
+                            console.error('HLS error:', data);
+                            if (data.fatal) {
+                                switch(data.type) {
+                                    case Hls.ErrorTypes.NETWORK_ERROR:
+                                        console.error('HLS network error, trying to recover...');
+                                        hls.startLoad();
+                                        break;
+                                    case Hls.ErrorTypes.MEDIA_ERROR:
+                                        console.error('HLS media error, trying to recover...');
+                                        hls.recoverMediaError();
+                                        break;
+                                    default:
+                                        console.error('HLS fatal error, cannot recover');
+                                        showError('Lỗi HLS không thể khôi phục');
+                                        hls.destroy();
+                                        break;
+                                }
+                            }
+                        });
+                        
+                    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                        // Fallback cho Safari native HLS (không hỗ trợ custom headers)
+                        console.log('Using native HLS support (Safari), headers may not work');
+                        updateStatus('Đang tải HLS stream (native)...');
+                        videoElement.src = contentId;
+                        videoElement.load();
+                    } else {
+                        console.error('HLS is not supported in this browser');
+                        showError('Trình duyệt không hỗ trợ HLS');
+                    }
                 } else {
                     // Với progressive streams, dùng Fetch API + Blob URL để thêm headers
                     try {
