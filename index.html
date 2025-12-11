@@ -61,6 +61,21 @@
         // - HLS streams: dùng hls.js với xhrSetup để thêm headers trực tiếp
         // - Progressive streams: dùng fetch() + blob URL với headers trực tiếp
         
+        console.log('=== Cast Receiver Initialization ===');
+        console.log('Loading Cast Receiver SDK...');
+        
+        try {
+            const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
+            console.log('CastReceiverContext created successfully');
+            
+            const playerManager = castReceiverContext.getPlayerManager();
+            console.log('PlayerManager created successfully');
+            console.log('PlayerManager type:', typeof playerManager);
+        } catch (error) {
+            console.error('ERROR: Failed to initialize Cast Receiver context:', error);
+            showError('Lỗi khởi tạo Cast Receiver: ' + error.message);
+        }
+        
         const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
         const playerManager = castReceiverContext.getPlayerManager();
 
@@ -105,11 +120,19 @@
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.LOAD,
             async (loadRequestData) => {
-                console.log('Load request received:', loadRequestData);
+                console.log('=== LOAD MESSAGE RECEIVED ===');
+                console.log('Full loadRequestData:', JSON.stringify(loadRequestData, null, 2));
+                console.log('loadRequestData type:', typeof loadRequestData);
+                console.log('loadRequestData keys:', Object.keys(loadRequestData || {}));
                 
                 const media = loadRequestData.media;
+                console.log('Media object:', media);
+                console.log('Media type:', typeof media);
+                console.log('Media keys:', media ? Object.keys(media) : 'null');
+                
                 if (!media || !media.contentId) {
-                    console.error('No content ID in load request');
+                    console.error('ERROR: No content ID in load request!');
+                    console.error('Media object:', media);
                     showError('Không có URL video');
                     return null;
                 }
@@ -117,8 +140,11 @@
                 const contentId = media.contentId;
                 const contentType = media.contentType || 'application/x-mpegURL';
                 
+                console.log('=== Media Details ===');
                 console.log('Content URL:', contentId);
                 console.log('Content Type:', contentType);
+                console.log('Stream Type:', media.streamType);
+                console.log('Metadata:', media.metadata);
 
                 // Xác định headers
                 const headers = getHeadersForUrl(contentId);
@@ -353,23 +379,36 @@
         }
 
         // Xử lý lỗi khi khởi động Cast Receiver
+        console.log('=== Starting Cast Receiver ===');
         try {
             // Khởi động Cast Receiver
             const options = new cast.framework.CastReceiverOptions();
             options.disableIdleTimeout = true;
+            console.log('CastReceiverOptions created:', options);
             
             // Thêm error handler
             castReceiverContext.addCustomMessageListener('urn:x-cast:com.google.cast.debug', (data) => {
-                console.log('Custom message received:', data);
+                console.log('Custom debug message received:', data);
             });
+            console.log('Custom message listener registered');
             
+            console.log('Calling castReceiverContext.start()...');
             castReceiverContext.start(options);
             
-            console.log('Cast Receiver initialized successfully');
+            console.log('=== Cast Receiver started successfully ===');
+            console.log('Receiver is now ready to receive Cast connections');
             updateStatus('Cast Receiver sẵn sàng');
             
+            // Log receiver info
+            console.log('Receiver Info:');
+            console.log('  - Receiver ID:', castReceiverContext.getReceiverId());
+            console.log('  - Application Data:', castReceiverContext.getApplicationData());
+            
         } catch (error) {
-            console.error('Error initializing Cast Receiver:', error);
+            console.error('=== ERROR: Failed to start Cast Receiver ===');
+            console.error('Error details:', error);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
             showError('Lỗi khởi tạo Cast Receiver: ' + error.message);
             updateStatus('Lỗi khởi tạo');
         }
@@ -386,29 +425,54 @@
         });
         
         // Xử lý các sự kiện player từ Cast framework
+        console.log('=== Registering Player Event Listeners ===');
+        
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_LOAD_START,
-            () => {
-                console.log('Player load start');
+            (event) => {
+                console.log('=== PLAYER_LOAD_START event ===');
+                console.log('Event details:', event);
+                console.log('Player is starting to load media');
                 updateStatus('Đang tải video...');
             }
         );
+        console.log('PLAYER_LOAD_START listener registered');
 
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
-            () => {
-                console.log('Player load complete');
+            (event) => {
+                console.log('=== PLAYER_LOAD_COMPLETE event ===');
+                console.log('Event details:', event);
+                console.log('Player finished loading media');
                 updateStatus('');
             }
         );
+        console.log('PLAYER_LOAD_COMPLETE listener registered');
 
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_PLAY,
-            () => {
-                console.log('Player playing');
+            (event) => {
+                console.log('=== PLAYER_PLAY event ===');
+                console.log('Event details:', event);
+                console.log('Player started playing');
                 updateStatus('');
             }
         );
+        console.log('PLAYER_PLAY listener registered');
+        
+        playerManager.addEventListener(
+            cast.framework.events.EventType.ERROR,
+            (event) => {
+                console.error('=== PLAYER ERROR event ===');
+                console.error('Error details:', event);
+                console.error('Error type:', event.type);
+                console.error('Error data:', event.data);
+                showError('Lỗi phát video: ' + (event.data ? JSON.stringify(event.data) : 'Unknown error'));
+            }
+        );
+        console.log('ERROR listener registered');
+        
+        console.log('All event listeners registered successfully');
 
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_PAUSE,
