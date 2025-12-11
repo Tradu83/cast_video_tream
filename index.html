@@ -57,6 +57,19 @@
         console.log('=== Cast Receiver Initialization ===');
         console.log('Loading Cast Receiver SDK...');
         
+        // Register Service Worker để thêm headers vào requests
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then((registration) => {
+                    console.log('Service Worker registered successfully:', registration.scope);
+                })
+                .catch((error) => {
+                    console.warn('Service Worker registration failed:', error);
+                });
+        } else {
+            console.warn('Service Worker not supported in this browser');
+        }
+        
         const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
         console.log('CastReceiverContext created successfully');
         
@@ -136,6 +149,22 @@
                 // Cập nhật status
                 updateStatus('Đang tải video...');
 
+                // Log chi tiết về stream URL
+                console.log('=== STREAM URL DETAILS ===');
+                console.log('Stream URL:', contentId);
+                console.log('ContentType:', contentType);
+                console.log('StreamType:', media.streamType);
+                console.log('Is HLS:', urlLower.includes('.m3u8'));
+                console.log('Is from fast5cdn:', contentId.includes('fast5cdn.net'));
+                
+                // Kiểm tra xem URL có cần Referer header không
+                if (contentId.includes('fast5cdn.net') || contentId.includes('xlz.livecdnem.com')) {
+                    console.warn('=== WARNING: Stream URL may require Referer header ===');
+                    console.warn('URL:', contentId);
+                    console.warn('Service Worker should add Referer: https://xlz.livecdnem.com/');
+                    console.warn('If error 905 occurs, the stream may require Referer header or have CORS issues');
+                }
+
                 // Trong Cast SDK v3, để Cast framework tự xử lý media bằng built-in player
                 // Chỉ cần return loadRequestData, không cần tự set video element
                 // Cast framework sẽ tự động sử dụng Shaka Player hoặc HTML5 player
@@ -163,8 +192,29 @@
                     console.error('=== PLAYER ERROR EVENT ===');
                     console.error('Error details:', errorEvent);
                     console.error('Error type:', errorEvent.type);
-                    console.error('Error data:', errorEvent.detailedErrorCode);
-                    showError('Lỗi phát video: ' + (errorEvent.detailedErrorCode || 'Unknown error'));
+                    console.error('Error code:', errorEvent.detailedErrorCode);
+                    console.error('Error message:', errorEvent.message);
+                    console.error('Error reason:', errorEvent.reason);
+                    
+                    // Xử lý lỗi 905 (MEDIA_UNKNOWN)
+                    const errorCode = errorEvent.detailedErrorCode;
+                    let errorMessage = 'Lỗi phát video';
+                    
+                    if (errorCode === 905 || errorCode === '905') {
+                        errorMessage = 'Lỗi 905: Không thể tải video. URL có thể không hợp lệ hoặc không tồn tại.';
+                        console.error('=== ERROR 905: MEDIA_UNKNOWN ===');
+                        console.error('This usually means:');
+                        console.error('1. URL does not exist or is invalid');
+                        console.error('2. Server returned error (404, 403, etc.)');
+                        console.error('3. Format is not supported');
+                        console.error('4. Network/CORS issue');
+                    } else if (errorCode === 2103 || errorCode === '2103') {
+                        errorMessage = 'Lỗi 2103: Không thể load media. Vui lòng kiểm tra URL.';
+                    } else if (errorCode) {
+                        errorMessage = 'Lỗi phát video (Code: ' + errorCode + ')';
+                    }
+                    
+                    showError(errorMessage);
                     updateStatus('Lỗi phát video');
                 }
             );
