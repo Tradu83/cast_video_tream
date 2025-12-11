@@ -57,68 +57,10 @@
     <!-- hls.js for HLS stream support with custom headers -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script>
-        // Đăng ký Service Worker để hỗ trợ headers cho HLS streams
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                // Thử nhiều đường dẫn để đảm bảo Service Worker được đăng ký
-                const swPaths = [
-                    '/service-worker.js',
-                    './service-worker.js',
-                    'service-worker.js'
-                ];
-                
-                let registrationAttempted = false;
-                
-                const tryRegister = (path, index) => {
-                    if (registrationAttempted && index > 0) return;
-                    
-                    console.log(`Attempting to register Service Worker with path: ${path}`);
-                    navigator.serviceWorker.register(path, { scope: '/' })
-                        .then((registration) => {
-                            registrationAttempted = true;
-                            console.log('Service Worker registered successfully:', registration.scope);
-                            console.log('Service Worker script URL:', registration.active?.scriptURL || registration.installing?.scriptURL);
-                            
-                            // Đảm bảo service worker active ngay lập tức
-                            if (registration.active) {
-                                console.log('Service Worker is active');
-                            } else if (registration.installing) {
-                                console.log('Service Worker is installing');
-                                registration.installing.addEventListener('statechange', (e) => {
-                                    console.log('Service Worker state changed:', e.target.state);
-                                    if (e.target.state === 'activated') {
-                                        console.log('Service Worker activated');
-                                    }
-                                });
-                            } else if (registration.waiting) {
-                                console.log('Service Worker is waiting, activating...');
-                                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-                            }
-                            
-                            // Force update nếu cần
-                            registration.update().catch(err => {
-                                console.warn('Service Worker update failed:', err);
-                            });
-                        })
-                        .catch((error) => {
-                            console.error(`Service Worker registration failed with path ${path}:`, error);
-                            // Thử đường dẫn tiếp theo
-                            if (index < swPaths.length - 1) {
-                                console.log(`Trying next path: ${swPaths[index + 1]}`);
-                                setTimeout(() => tryRegister(swPaths[index + 1], index + 1), 500);
-                            } else {
-                                console.warn('All Service Worker registration attempts failed. Headers may not work for HLS streams.');
-                            }
-                        });
-                };
-                
-                // Bắt đầu thử với đường dẫn đầu tiên
-                tryRegister(swPaths[0], 0);
-            });
-        } else {
-            console.warn('Service Workers are not supported in this browser');
-        }
-
+        // Không cần Service Worker nữa vì:
+        // - HLS streams: dùng hls.js với xhrSetup để thêm headers trực tiếp
+        // - Progressive streams: dùng fetch() + blob URL với headers trực tiếp
+        
         const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
         const playerManager = castReceiverContext.getPlayerManager();
 
