@@ -65,19 +65,9 @@
         console.log('PlayerManager type:', typeof playerManager);
 
         // Cấu hình player để xử lý các loại media
-        // Trong Cast SDK v3, PlaybackConfig không phải constructor, tạo object thông thường
-        // Lưu ý: setPlaybackConfig có thể gây lỗi addEventListener, thử bỏ qua nếu không cần thiết
-        try {
-            const playbackConfig = {
-                autoResumeDuration: 0,
-                autoPauseDuration: 0
-            };
-            playerManager.setPlaybackConfig(playbackConfig);
-            console.log('PlaybackConfig set successfully');
-        } catch (error) {
-            console.warn('Failed to set PlaybackConfig (may not be critical):', error);
-            console.log('Continuing without PlaybackConfig');
-        }
+        // Lưu ý: setPlaybackConfig có thể gây lỗi addEventListener trong Cast SDK v3
+        // Tạm thời bỏ qua để tránh lỗi, có thể thêm lại sau nếu cần
+        console.log('Skipping PlaybackConfig (may cause addEventListener error in Cast SDK v3)');
 
         // Intercept LOAD message để xử lý media URL
         console.log('Setting up LOAD message interceptor...');
