@@ -66,13 +66,18 @@
 
         // Cấu hình player để xử lý các loại media
         // Trong Cast SDK v3, PlaybackConfig không phải constructor, tạo object thông thường
-        const playbackConfig = {
-            autoResumeDuration: 0,
-            autoPauseDuration: 0
-        };
-        
-        playerManager.setPlaybackConfig(playbackConfig);
-        console.log('PlaybackConfig set successfully');
+        // Lưu ý: setPlaybackConfig có thể gây lỗi addEventListener, thử bỏ qua nếu không cần thiết
+        try {
+            const playbackConfig = {
+                autoResumeDuration: 0,
+                autoPauseDuration: 0
+            };
+            playerManager.setPlaybackConfig(playbackConfig);
+            console.log('PlaybackConfig set successfully');
+        } catch (error) {
+            console.warn('Failed to set PlaybackConfig (may not be critical):', error);
+            console.log('Continuing without PlaybackConfig');
+        }
 
         // Intercept LOAD message để xử lý media URL
         console.log('Setting up LOAD message interceptor...');
@@ -196,13 +201,21 @@
 
         // Khởi động Cast Receiver
         console.log('Starting Cast Receiver...');
-        const options = new cast.framework.CastReceiverOptions();
-        options.disableIdleTimeout = true;
-        castReceiverContext.start(options);
+        try {
+            const options = new cast.framework.CastReceiverOptions();
+            options.disableIdleTimeout = true;
+            castReceiverContext.start(options);
 
-        console.log('=== Cast Receiver started successfully ===');
-        console.log('Cast Receiver initialized and ready');
-        updateStatus('Cast Receiver sẵn sàng');
+            console.log('=== Cast Receiver started successfully ===');
+            console.log('Cast Receiver initialized and ready');
+            updateStatus('Cast Receiver sẵn sàng');
+        } catch (error) {
+            console.error('=== ERROR: Failed to start Cast Receiver ===');
+            console.error('Error details:', error);
+            console.error('Error message:', error.message);
+            showError('Lỗi khởi tạo Cast Receiver: ' + error.message);
+            updateStatus('Lỗi khởi tạo');
+        }
         
         // Ẩn status sau 3 giây nếu không có video
         setTimeout(() => {
