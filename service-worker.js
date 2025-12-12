@@ -1,35 +1,45 @@
 // Service Worker để thêm headers vào tất cả requests (bao gồm HLS streams)
-// Điều này cho phép thêm headers vào HLS manifest và segments
 
 const CACHE_NAME = 'cast-receiver-v1';
 
-// Hàm xác định headers dựa trên URL
+// --- HÀM TIỆN ÍCH ---
+
+/**
+ * Hàm xác định headers cần thiết dựa trên URL.
+ * @param {string} url - URL của request.
+ * @returns {object} - Object chứa các custom header.
+ */
 function getHeadersForUrl(url) {
     const headers = {};
+    const urlLower = url.toLowerCase();
     
     // Xác định Referer và Origin dựa trên domain
-    if (url.includes("xlz.livecdnem.com") || 
-        url.includes("fast5cdn.net") ||
-        url.includes("procdnlive.com")) {
+    if (urlLower.includes("xlz.livecdnem.com") || 
+        urlLower.includes("fast5cdn.net") ||
+        urlLower.includes("procdnlive.com")) {
+        // Đây là các domain yêu cầu Referer cụ thể
         headers['Referer'] = 'https://xlz.livecdnem.com/';
         headers['Origin'] = 'https://xlz.livecdnem.com';
     } else {
+        // Referer/Origin mặc định (Ví dụ: cho các luồng không yêu cầu xác thực)
         headers['Referer'] = 'https://peepoople.com/';
         headers['Origin'] = 'https://peepoople.com';
     }
     
-    // Thêm các headers chung
+    // Thêm các headers chung để giả lập trình duyệt
     headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
     headers['Accept'] = '*/*';
     headers['Accept-Language'] = 'en-US,en;q=0.9,vi;q=0.8';
-    headers['Accept-Encoding'] = 'identity';
+    headers['Accept-Encoding'] = 'identity'; // Quan trọng để nhận được dữ liệu không nén
     headers['Connection'] = 'keep-alive';
     headers['Cache-Control'] = 'no-cache';
     headers['Pragma'] = 'no-cache';
-    headers['X-Requested-With'] = 'XMLHttpRequest';
+    // Xóa X-Requested-With vì đôi khi nó gây lỗi CORS
     
     return headers;
 }
+
+// --- XỬ LÝ SỰ KIỆN SERVICE WORKER ---
 
 // Install event - đăng ký service worker
 self.addEventListener('install', (event) => {
@@ -58,117 +68,87 @@ self.addEventListener('activate', (event) => {
 // Fetch event - intercept tất cả network requests
 self.addEventListener('fetch', (event) => {
     const url = event.request.url;
+    const urlLower = url.toLowerCase();
     
-    // Chỉ xử lý các requests đến video/CDN domains
-    const isVideoRequest = url.includes('.m3u8') || 
-                          url.includes('.ts') || 
-                          url.includes('.mp4') ||
-                          url.includes('.webm') ||
-                          url.includes('xlz.livecdnem.com') ||
-                          url.includes('fast5cdn.net') ||
-                          url.includes('procdnlive.com') ||
-                          url.includes('peepoople.com');
+    // Chỉ xử lý các requests liên quan đến media
+    const isMediaRequest = urlLower.includes('.m3u8') || 
+                          urlLower.includes('.ts') || 
+                          urlLower.includes('.mp4') ||
+                          urlLower.includes('.webm') ||
+                          urlLower.includes('.mpd') ||
+                          urlLower.includes('xlz.livecdnem.com') ||
+                          urlLower.includes('fast5cdn.net') ||
+                          urlLower.includes('procdnlive.com') ||
+                          urlLower.includes('peepoople.com');
     
-    if (!isVideoRequest) {
-        // Không phải video request, pass through bình thường
+    if (!isMediaRequest) {
+        // Không phải media request, pass through bình thường
         return;
     }
     
-    console.log('=== SERVICE WORKER INTERCEPTING REQUEST ===');
+    console.log('--- SW Intercepting Media Request ---');
     console.log('URL:', url);
-    console.log('Method:', event.request.method);
-    console.log('Is video request:', isVideoRequest);
     
     // Lấy headers dựa trên URL
     const customHeaders = getHeadersForUrl(url);
-    console.log('Custom headers to add:', customHeaders);
     
     // Tạo request mới với headers
-    const headers = new Headers();
+    const headers = new Headers(event.request.headers);
     
-    // Copy headers từ request gốc (trừ những headers sẽ override)
-    const originalHeaders = event.request.headers;
-    console.log('Original request headers:', Object.fromEntries(originalHeaders.entries()));
-    
-    originalHeaders.forEach((value, key) => {
-        // Không copy các headers sẽ được override
-        if (!customHeaders.hasOwnProperty(key)) {
-            headers.append(key, value);
-        }
-    });
-    
-    // Thêm custom headers
+    // Ghi đè các custom headers
     Object.keys(customHeaders).forEach((key) => {
         headers.set(key, customHeaders[key]);
-        console.log('Added header:', key, '=', customHeaders[key]);
     });
     
-    // Tạo request mới với headers
     const modifiedRequest = new Request(url, {
         method: event.request.method,
         headers: headers,
-        mode: 'cors',
+        mode: 'cors', // Luôn dùng 'cors'
         credentials: 'omit',
-        cache: 'no-cache',
+        cache: 'no-cache', // Không cache request mạng
         redirect: 'follow'
     });
     
-    console.log('=== MODIFIED REQUEST WITH HEADERS ===');
-    console.log('Final headers:', Object.fromEntries(headers.entries()));
-    console.log('Referer header:', headers.get('Referer'));
-    console.log('Origin header:', headers.get('Origin'));
+    console.log('Final Referer:', headers.get('Referer'));
     
     // Fetch với request đã được modify
     event.respondWith(
         fetch(modifiedRequest)
             .then((response) => {
-                console.log('=== FETCH SUCCESS ===');
-                console.log('Response status:', response.status, response.statusText);
-                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+                console.log(`Fetch success: ${response.status} ${response.statusText}`);
                 
-                // Kiểm tra response
-                if (!response.ok) {
-                    console.error('Fetch failed:', response.status, response.statusText);
-                    console.error('URL:', url);
-                    console.error('This may indicate CORS issue or missing Referer header');
-                }
-                
-                // Clone response để có thể đọc nhiều lần
-                const responseToCache = response.clone();
-                
-                // Cache response (optional, có thể bỏ qua cho live streams)
-                // Chỉ cache nếu không phải HLS live stream
-                if (!url.includes('.m3u8') && !url.includes('.ts')) {
-                    caches.open(CACHE_NAME).then((cache) => {
-                        cache.put(event.request, responseToCache);
-                    });
-                }
-                
+                // Trả về response ngay lập tức
                 return response;
             })
             .catch((error) => {
-                console.error('=== FETCH ERROR ===');
+                console.error('--- SW FETCH ERROR ---');
                 console.error('Error:', error);
                 console.error('URL:', url);
-                console.error('This may indicate:');
-                console.error('1. CORS issue - server may not allow requests from Cast receiver domain');
-                console.error('2. Missing Referer header - server may require Referer header');
-                console.error('3. Network issue - server may be unreachable');
+                console.error('Lỗi có thể do CORS, thiếu Referer, hoặc lỗi mạng/SSL.');
                 
-                // Fallback: thử fetch không có headers
-                console.log('Fallback: trying without custom headers');
-                return fetch(event.request);
+                // Tối ưu hóa: Thay vì thử fetch lại không có headers (dễ thất bại),
+                // chúng ta trả về một Response báo lỗi mạng/404 để Cast Receiver (Shaka Player) 
+                // có thể bắt được lỗi và thông báo cho người dùng (Code 905).
+                
+                return new Response(
+                    JSON.stringify({
+                        error: 'Network or CORS issue preventing fetch. Custom headers failed.',
+                        url: url
+                    }), {
+                        status: 503, // Service Unavailable, hoặc 404/403 nếu phù hợp hơn
+                        statusText: 'Service Worker Fetch Failed (CORS/Referer Issue)',
+                        headers: {'Content-Type': 'application/json'}
+                    }
+                );
             })
     );
 });
 
 // Message event - để nhận messages từ main thread
 self.addEventListener('message', (event) => {
-    console.log('Service Worker received message:', event.data);
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
     }
 });
 
 console.log('Service Worker loaded and ready');
-
