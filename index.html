@@ -19,6 +19,7 @@
             height: 100vh;
         }
         #video {
+            /* Cast CAF sẽ tự quản lý video element, nhưng giữ lại để fallback */
             width: 100%;
             height: 100%;
             object-fit: contain;
@@ -32,6 +33,13 @@
             background: rgba(0, 0, 0, 0.7);
             padding: 10px 20px;
             border-radius: 5px;
+            /* Thay đổi: Sử dụng opacity/transition để ẩn hiện mượt mà hơn */
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            pointer-events: none; /* Không chặn click vào video */
+        }
+        #status.visible {
+            opacity: 1;
         }
         #error {
             position: absolute;
@@ -43,6 +51,9 @@
             text-align: center;
             z-index: 1001;
             display: none;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px 40px;
+            border-radius: 8px;
         }
     </style>
 </head>
@@ -51,250 +62,172 @@
     <div id="error"></div>
     <video id="video" controls autoplay playsinline></video>
 
-    <!-- Cast Receiver SDK -->
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script>
-        console.log('=== Cast Receiver Initialization ===');
-        console.log('Loading Cast Receiver SDK...');
+        'use strict'; // Sử dụng chế độ nghiêm ngặt
+
+        console.log('--- Cast Receiver Initialization ---');
         
-        // Register Service Worker để thêm headers vào requests
-        // Lưu ý: Service Worker chỉ hoạt động trên HTTPS hoặc localhost
-        if ('serviceWorker' in navigator) {
-            // Sử dụng đường dẫn tương đối từ root
-            const swPath = './service-worker.js';
-            navigator.serviceWorker.register(swPath)
-                .then((registration) => {
-                    console.log('Service Worker registered successfully:', registration.scope);
-                    console.log('Service Worker will add Referer headers to video requests');
-                })
-                .catch((error) => {
-                    console.warn('Service Worker registration failed:', error);
-                    console.warn('This is OK - video may still play, but headers may not be added');
-                    console.warn('To fix: Deploy service-worker.js to GitHub repository root');
-                });
-        } else {
-            console.warn('Service Worker not supported in this browser');
-        }
-        
-        const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
-        console.log('CastReceiverContext created successfully');
-        
-        const playerManager = castReceiverContext.getPlayerManager();
-        console.log('PlayerManager created successfully');
-        console.log('PlayerManager type:', typeof playerManager);
+        // --- CÁC HÀM TIỆN ÍCH ---
 
-        // Cấu hình player để xử lý các loại media
-        // Lưu ý: setPlaybackConfig có thể gây lỗi addEventListener trong Cast SDK v3
-        // Tạm thời bỏ qua để tránh lỗi, có thể thêm lại sau nếu cần
-        console.log('Skipping PlaybackConfig (may cause addEventListener error in Cast SDK v3)');
+        const statusEl = document.getElementById('status');
+        const errorEl = document.getElementById('error');
 
-        // Intercept LOAD message để xử lý media URL
-        console.log('Setting up LOAD message interceptor...');
-        console.log('MessageType.LOAD:', cast.framework.messages.MessageType.LOAD);
-        
-        try {
-            playerManager.setMessageInterceptor(
-                cast.framework.messages.MessageType.LOAD,
-                loadRequestData => {
-                    console.log('=== LOAD MESSAGE RECEIVED ===');
-                    console.log('Load request received:', loadRequestData);
-                    console.log('Load request type:', typeof loadRequestData);
-                    console.log('Load request keys:', loadRequestData ? Object.keys(loadRequestData) : 'null');
-                
-                const media = loadRequestData.media;
-                if (!media || !media.contentId) {
-                    console.error('No content ID in load request');
-                    showError('Không có URL video');
-                    return null;
-                }
-
-                const contentId = media.contentId;
-                let contentType = media.contentType || 'application/x-mpegURL';
-                
-                console.log('Content URL:', contentId);
-                console.log('Original Content Type:', contentType);
-                console.log('Stream Type:', media.streamType);
-                console.log('Media metadata:', media.metadata);
-
-                // Kiểm tra và xử lý các định dạng không được hỗ trợ
-                const urlLower = contentId.toLowerCase();
-                
-                // FLV không được Cast receiver hỗ trợ
-                if (urlLower.includes('.flv')) {
-                    console.error('=== ERROR: FLV format is not supported by Cast receiver ===');
-                    console.error('FLV files cannot be played on Cast devices');
-                    console.error('Please use MP4, HLS (m3u8), or DASH (mpd) format instead');
-                    showError('Định dạng FLV không được hỗ trợ. Vui lòng sử dụng MP4, HLS hoặc DASH.');
-                    updateStatus('Lỗi: FLV không được hỗ trợ');
-                    return null; // Reject load request
-                }
-                
-                // Tự động sửa ContentType nếu không đúng
-                if (urlLower.includes('.m3u8') || urlLower.includes('hls')) {
-                    contentType = 'application/x-mpegURL';
-                    console.log('Auto-detected HLS stream, setting ContentType to:', contentType);
-                } else if (urlLower.includes('.mpd') || urlLower.includes('dash')) {
-                    contentType = 'application/dash+xml';
-                    console.log('Auto-detected DASH stream, setting ContentType to:', contentType);
-                } else if (urlLower.includes('.mp4')) {
-                    contentType = 'video/mp4';
-                    console.log('Auto-detected MP4 stream, setting ContentType to:', contentType);
-                } else if (urlLower.includes('.webm')) {
-                    contentType = 'video/webm';
-                    console.log('Auto-detected WebM stream, setting ContentType to:', contentType);
-                }
-                
-                // Cập nhật ContentType trong loadRequestData nếu đã thay đổi
-                if (contentType !== media.contentType) {
-                    console.log('Updating ContentType from', media.contentType, 'to', contentType);
-                    media.contentType = contentType;
-                }
-                
-                console.log('Final Content Type:', contentType);
-
-                // Cập nhật status
-                updateStatus('Đang tải video...');
-
-                // Log chi tiết về stream URL
-                console.log('=== STREAM URL DETAILS ===');
-                console.log('Stream URL:', contentId);
-                console.log('ContentType:', contentType);
-                console.log('StreamType:', media.streamType);
-                console.log('Is HLS:', urlLower.includes('.m3u8'));
-                console.log('Is from fast5cdn:', contentId.includes('fast5cdn.net'));
-                
-                // Kiểm tra xem URL có cần Referer header không
-                if (contentId.includes('fast5cdn.net') || contentId.includes('xlz.livecdnem.com')) {
-                    console.warn('=== WARNING: Stream URL may require Referer header ===');
-                    console.warn('URL:', contentId);
-                    console.warn('Service Worker should add Referer: https://xlz.livecdnem.com/');
-                    console.warn('If error 905 occurs, the stream may require Referer header or have CORS issues');
-                }
-
-                // Trong Cast SDK v3, để Cast framework tự xử lý media bằng built-in player
-                // Chỉ cần return loadRequestData, không cần tự set video element
-                // Cast framework sẽ tự động sử dụng Shaka Player hoặc HTML5 player
-                console.log('Returning loadRequestData to Cast framework for automatic playback');
-                return loadRequestData;
-                }
-            );
-            console.log('LOAD message interceptor registered successfully');
-        } catch (error) {
-            console.error('ERROR: Failed to set LOAD message interceptor:', error);
-            console.error('Error details:', error.message, error.stack);
-        }
-
-        // Xử lý các sự kiện player
-        // Lưu ý: Trong Cast SDK v3, một số event type có thể không khả dụng
-        // Tạm thời comment out để tránh lỗi "invalid event type"
-        // Có thể sử dụng video element events thay thế (đã có ở trên)
-        
-        // Thêm event listeners để log lỗi và trạng thái
-        try {
-            // Lắng nghe sự kiện ERROR từ PlayerManager
-            playerManager.addEventListener(
-                cast.framework.events.EventType.ERROR,
-                (errorEvent) => {
-                    console.error('=== PLAYER ERROR EVENT ===');
-                    console.error('Error details:', errorEvent);
-                    console.error('Error type:', errorEvent.type);
-                    console.error('Error code:', errorEvent.detailedErrorCode);
-                    console.error('Error message:', errorEvent.message);
-                    console.error('Error reason:', errorEvent.reason);
-                    
-                    // Xử lý lỗi 905 (MEDIA_UNKNOWN)
-                    const errorCode = errorEvent.detailedErrorCode;
-                    let errorMessage = 'Lỗi phát video';
-                    
-                    if (errorCode === 905 || errorCode === '905') {
-                        errorMessage = 'Lỗi 905: Không thể tải video. URL có thể không hợp lệ hoặc không tồn tại.';
-                        console.error('=== ERROR 905: MEDIA_UNKNOWN ===');
-                        console.error('This usually means:');
-                        console.error('1. URL does not exist or is invalid');
-                        console.error('2. Server returned error (404, 403, etc.)');
-                        console.error('3. Format is not supported');
-                        console.error('4. Network/CORS issue');
-                    } else if (errorCode === 2103 || errorCode === '2103') {
-                        errorMessage = 'Lỗi 2103: Không thể load media. Vui lòng kiểm tra URL.';
-                    } else if (errorCode) {
-                        errorMessage = 'Lỗi phát video (Code: ' + errorCode + ')';
-                    }
-                    
-                    showError(errorMessage);
-                    updateStatus('Lỗi phát video');
-                }
-            );
-            console.log('ERROR event listener registered');
-        } catch (error) {
-            console.warn('Could not register ERROR event listener:', error);
-        }
-        
-        try {
-            // Lắng nghe sự kiện PLAYER_LOAD_COMPLETE
-            playerManager.addEventListener(
-                cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
-                () => {
-                    console.log('=== PLAYER LOAD COMPLETE ===');
-                    updateStatus('Video đã tải xong');
-                    setTimeout(() => updateStatus(''), 2000);
-                }
-            );
-            console.log('PLAYER_LOAD_COMPLETE event listener registered');
-        } catch (error) {
-            console.warn('Could not register PLAYER_LOAD_COMPLETE event listener:', error);
-        }
-        
-        // Lưu ý: PLAYER_LOAD_START không tồn tại trong Cast SDK v3
-        // Thay vào đó, sử dụng LOAD message interceptor để log khi bắt đầu load
-        // (Đã có logging trong LOAD message interceptor ở trên)
-        console.log('Skipping PLAYER_LOAD_START event listener (not available in Cast SDK v3)');
-
-        // Hàm cập nhật status
-        function updateStatus(message) {
-            const statusEl = document.getElementById('status');
+        /** Cập nhật trạng thái hiển thị mượt mà hơn */
+        function updateStatus(message, duration = 0) {
             if (message) {
                 statusEl.textContent = message;
-                statusEl.style.display = 'block';
+                statusEl.classList.add('visible');
+                if (duration > 0) {
+                    setTimeout(() => updateStatus(''), duration);
+                }
             } else {
-                statusEl.style.display = 'none';
+                statusEl.classList.remove('visible');
             }
         }
 
-        // Hàm hiển thị lỗi
+        /** Hiển thị lỗi và ẩn sau 5 giây */
         function showError(message) {
-            const errorEl = document.getElementById('error');
             errorEl.textContent = message;
             errorEl.style.display = 'block';
+            console.error('RECEIVER ERROR:', message);
             setTimeout(() => {
                 errorEl.style.display = 'none';
             }, 5000);
         }
 
-        // Khởi động Cast Receiver
-        console.log('Starting Cast Receiver...');
+        // --- 1. SERVICE WORKER REGISTRATION (Đã tối ưu) ---
+        
+        if ('serviceWorker' in navigator) {
+            const swPath = './service-worker.js';
+            navigator.serviceWorker.register(swPath)
+                .then((registration) => {
+                    console.log('Service Worker registered successfully:', registration.scope);
+                    updateStatus('Đã đăng ký Service Worker', 2000);
+                })
+                .catch((error) => {
+                    console.warn('Service Worker registration failed:', error);
+                    showError('Cảnh báo: Không thể đăng ký Service Worker. Video yêu cầu header có thể không phát được.');
+                });
+        } else {
+            console.warn('Service Worker not supported in this browser');
+        }
+
+        // --- 2. KHỞI TẠO CAST FRAMEWORK ---
+        
+        const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
+        const playerManager = castReceiverContext.getPlayerManager();
+
+        // --- 3. TỐI ƯU HÓA PLAYBACK CONFIG (BỎ QUA VÌ ĐÃ CÓ SERVICE WORKER) ---
+
+        // Bỏ qua setPlaybackConfig/Request Handlers vì Service Worker đã xử lý headers 
+        // và để tránh lỗi addEventListener trong một số phiên bản SDK.
+        console.log('PlaybackConfig skipped. Service Worker handles Referer headers.');
+
+        // --- 4. INTERCEPT LOAD MESSAGE (Tối ưu hóa kiểm tra) ---
+        
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.LOAD,
+            loadRequestData => {
+                console.log('--- LOAD MESSAGE RECEIVED ---');
+                const media = loadRequestData?.media;
+                
+                if (!media || !media.contentId) {
+                    console.error('No content ID in load request');
+                    showError('Không có URL video');
+                    return null; // Reject load request
+                }
+
+                const contentId = media.contentId;
+                let contentType = media.contentType;
+                const urlLower = contentId.toLowerCase();
+                
+                // Kiểm tra và xử lý định dạng không được hỗ trợ (FLV)
+                if (urlLower.includes('.flv')) {
+                    console.error('ERROR: FLV format is not supported');
+                    showError('Định dạng FLV không được hỗ trợ.');
+                    updateStatus('Lỗi: FLV không được hỗ trợ');
+                    return null;
+                }
+                
+                // Tự động sửa ContentType (Logic được giữ nguyên)
+                if (urlLower.includes('.m3u8') || urlLower.includes('hls')) {
+                    contentType = 'application/x-mpegURL';
+                } else if (urlLower.includes('.mpd') || urlLower.includes('dash')) {
+                    contentType = 'application/dash+xml';
+                } else if (urlLower.includes('.mp4')) {
+                    contentType = 'video/mp4';
+                } else if (urlLower.includes('.webm')) {
+                    contentType = 'video/webm';
+                }
+                
+                // Cập nhật ContentType nếu đã thay đổi
+                if (contentType && contentType !== media.contentType) {
+                    media.contentType = contentType;
+                    console.log('Updated ContentType to:', contentType);
+                } else if (!contentType) {
+                    // Cung cấp ContentType mặc định nếu không xác định được
+                    media.contentType = 'application/x-mpegURL';
+                }
+                
+                // Cảnh báo nếu cần Referer
+                if (contentId.includes('fast5cdn.net') || contentId.includes('xlz.livecdnem.com')) {
+                    console.warn('Stream URL may require Referer header. Service Worker must be active.');
+                }
+
+                updateStatus('Đang tải video...');
+                return loadRequestData;
+            }
+        );
+        
+        // --- 5. XỬ LÝ SỰ KIỆN PLAYER (Đã Tối Ưu Log và Xử lý Lỗi) ---
+        
+        // Lắng nghe sự kiện ERROR từ PlayerManager
+        playerManager.addEventListener(
+            cast.framework.events.EventType.ERROR,
+            (errorEvent) => {
+                const errorCode = errorEvent.detailedErrorCode;
+                let errorMessage = 'Lỗi phát video không xác định.';
+                
+                if (errorCode === 905) {
+                    errorMessage = 'Lỗi 905 (Không thể tải): URL không hợp lệ, bị chặn (CORS/Referer) hoặc không tồn tại.';
+                } else if (errorCode === 2103) {
+                    errorMessage = 'Lỗi 2103: Không thể load media. Vui lòng kiểm tra URL.';
+                } else if (errorCode) {
+                    errorMessage = `Lỗi phát video (Code: ${errorCode})`;
+                }
+
+                console.error('PLAYER ERROR:', errorEvent);
+                showError(errorMessage);
+                updateStatus('Lỗi phát video');
+            }
+        );
+        
+        // Lắng nghe sự kiện PLAYER_LOAD_COMPLETE
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
+            () => {
+                console.log('PLAYER LOAD COMPLETE');
+                updateStatus('Video đã tải xong', 2000);
+            }
+        );
+        
+        // --- 6. KHỞI ĐỘNG CAST RECEIVER ---
+        
         try {
             const options = new cast.framework.CastReceiverOptions();
-            options.disableIdleTimeout = true;
+            options.disableIdleTimeout = true; // Không tắt màn hình khi không có nội dung
+            
             castReceiverContext.start(options);
-
-            console.log('=== Cast Receiver started successfully ===');
-            console.log('Cast Receiver initialized and ready');
-            updateStatus('Cast Receiver sẵn sàng');
+            
+            console.log('--- Cast Receiver started successfully ---');
+            updateStatus('Cast Receiver sẵn sàng', 2000);
         } catch (error) {
-            console.error('=== ERROR: Failed to start Cast Receiver ===');
-            console.error('Error details:', error);
-            console.error('Error message:', error.message);
+            console.error('ERROR: Failed to start Cast Receiver', error);
             showError('Lỗi khởi tạo Cast Receiver: ' + error.message);
             updateStatus('Lỗi khởi tạo');
         }
-        
-        // Ẩn status sau 3 giây nếu không có video
-        setTimeout(() => {
-            const video = document.getElementById('video');
-            if (!video.src) {
-                updateStatus('');
-            }
-        }, 3000);
+
     </script>
 </body>
 </html>
