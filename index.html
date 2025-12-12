@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Custom Cast Receiver - Video Stream</title>
+    <title>Custom Cast Receiver - Optimized Stream</title>
     <style>
         * {
             margin: 0;
@@ -19,7 +19,7 @@
             height: 100vh;
         }
         #video {
-            /* Cast CAF sẽ tự quản lý video element, nhưng giữ lại để fallback */
+            /* CAF sẽ tự quản lý video element */
             width: 100%;
             height: 100%;
             object-fit: contain;
@@ -33,10 +33,10 @@
             background: rgba(0, 0, 0, 0.7);
             padding: 10px 20px;
             border-radius: 5px;
-            /* Thay đổi: Sử dụng opacity/transition để ẩn hiện mượt mà hơn */
+            /* Dùng opacity/transition để ẩn hiện mượt mà */
             opacity: 0;
             transition: opacity 0.5s ease-in-out;
-            pointer-events: none; /* Không chặn click vào video */
+            pointer-events: none;
         }
         #status.visible {
             opacity: 1;
@@ -64,16 +64,17 @@
 
     <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
     <script>
-        'use strict'; // Sử dụng chế độ nghiêm ngặt
+        'use strict';
 
-        console.log('--- Cast Receiver Initialization ---');
+        console.log('--- Cast Receiver Initialization (Optimized Client Mode) ---');
+        console.log('--- Service Worker has been removed. Sender handles headers. ---');
         
         // --- CÁC HÀM TIỆN ÍCH ---
 
         const statusEl = document.getElementById('status');
         const errorEl = document.getElementById('error');
 
-        /** Cập nhật trạng thái hiển thị mượt mà hơn */
+        /** Cập nhật trạng thái hiển thị */
         function updateStatus(message, duration = 0) {
             if (message) {
                 statusEl.textContent = message;
@@ -86,7 +87,7 @@
             }
         }
 
-        /** Hiển thị lỗi và ẩn sau 5 giây */
+        /** Hiển thị lỗi */
         function showError(message) {
             errorEl.textContent = message;
             errorEl.style.display = 'block';
@@ -96,35 +97,12 @@
             }, 5000);
         }
 
-        // --- 1. SERVICE WORKER REGISTRATION (Đã tối ưu) ---
-        
-        if ('serviceWorker' in navigator) {
-            const swPath = './service-worker.js';
-            navigator.serviceWorker.register(swPath)
-                .then((registration) => {
-                    console.log('Service Worker registered successfully:', registration.scope);
-                    updateStatus('Đã đăng ký Service Worker', 2000);
-                })
-                .catch((error) => {
-                    console.warn('Service Worker registration failed:', error);
-                    showError('Cảnh báo: Không thể đăng ký Service Worker. Video yêu cầu header có thể không phát được.');
-                });
-        } else {
-            console.warn('Service Worker not supported in this browser');
-        }
-
-        // --- 2. KHỞI TẠO CAST FRAMEWORK ---
+        // --- KHỞI TẠO CAST FRAMEWORK ---
         
         const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
         const playerManager = castReceiverContext.getPlayerManager();
 
-        // --- 3. TỐI ƯU HÓA PLAYBACK CONFIG (BỎ QUA VÌ ĐÃ CÓ SERVICE WORKER) ---
-
-        // Bỏ qua setPlaybackConfig/Request Handlers vì Service Worker đã xử lý headers 
-        // và để tránh lỗi addEventListener trong một số phiên bản SDK.
-        console.log('PlaybackConfig skipped. Service Worker handles Referer headers.');
-
-        // --- 4. INTERCEPT LOAD MESSAGE (Tối ưu hóa kiểm tra) ---
+        // --- INTERCEPT LOAD MESSAGE (Chỉ giữ lại kiểm tra cơ bản và ContentType) ---
         
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.LOAD,
@@ -142,15 +120,14 @@
                 let contentType = media.contentType;
                 const urlLower = contentId.toLowerCase();
                 
-                // Kiểm tra và xử lý định dạng không được hỗ trợ (FLV)
+                // Kiểm tra định dạng không được hỗ trợ (FLV)
                 if (urlLower.includes('.flv')) {
                     console.error('ERROR: FLV format is not supported');
                     showError('Định dạng FLV không được hỗ trợ.');
-                    updateStatus('Lỗi: FLV không được hỗ trợ');
                     return null;
                 }
                 
-                // Tự động sửa ContentType (Logic được giữ nguyên)
+                // Tự động sửa ContentType (Nếu Sender không gửi đúng)
                 if (urlLower.includes('.m3u8') || urlLower.includes('hls')) {
                     contentType = 'application/x-mpegURL';
                 } else if (urlLower.includes('.mpd') || urlLower.includes('dash')) {
@@ -166,33 +143,34 @@
                     media.contentType = contentType;
                     console.log('Updated ContentType to:', contentType);
                 } else if (!contentType) {
-                    // Cung cấp ContentType mặc định nếu không xác định được
+                    // Nếu không có ContentType nào, dùng mặc định
                     media.contentType = 'application/x-mpegURL';
                 }
-                
-                // Cảnh báo nếu cần Referer
-                if (contentId.includes('fast5cdn.net') || contentId.includes('xlz.livecdnem.com')) {
-                    console.warn('Stream URL may require Referer header. Service Worker must be active.');
-                }
 
-                updateStatus('Đang tải video...');
+                console.log('Attempting to load URL:', contentId);
+                console.log('Final Content Type:', media.contentType);
+                updateStatus('Đang tải video...', 1000);
+                
+                // Trả lại loadRequestData để Cast Framework tự xử lý
                 return loadRequestData;
             }
         );
         
-        // --- 5. XỬ LÝ SỰ KIỆN PLAYER (Đã Tối Ưu Log và Xử lý Lỗi) ---
+        // --- XỬ LÝ SỰ KIỆN PLAYER (Chủ yếu là báo lỗi) ---
         
         // Lắng nghe sự kiện ERROR từ PlayerManager
+        const EventType = cast.framework.events.EventType;
         playerManager.addEventListener(
-            cast.framework.events.EventType.ERROR,
+            EventType.ERROR,
             (errorEvent) => {
                 const errorCode = errorEvent.detailedErrorCode;
                 let errorMessage = 'Lỗi phát video không xác định.';
                 
                 if (errorCode === 905) {
-                    errorMessage = 'Lỗi 905 (Không thể tải): URL không hợp lệ, bị chặn (CORS/Referer) hoặc không tồn tại.';
+                    // Lỗi 905 ở đây có thể do URL Proxy không hoạt động hoặc URL Gốc vẫn bị chặn
+                    errorMessage = 'Lỗi 905: Không thể tải video. (Kiểm tra Server Proxy trên điện thoại).';
                 } else if (errorCode === 2103) {
-                    errorMessage = 'Lỗi 2103: Không thể load media. Vui lòng kiểm tra URL.';
+                    errorMessage = 'Lỗi 2103: Không thể load media. URL không hợp lệ.';
                 } else if (errorCode) {
                     errorMessage = `Lỗi phát video (Code: ${errorCode})`;
                 }
@@ -205,22 +183,22 @@
         
         // Lắng nghe sự kiện PLAYER_LOAD_COMPLETE
         playerManager.addEventListener(
-            cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
+            EventType.PLAYER_LOAD_COMPLETE,
             () => {
                 console.log('PLAYER LOAD COMPLETE');
                 updateStatus('Video đã tải xong', 2000);
             }
         );
         
-        // --- 6. KHỞI ĐỘNG CAST RECEIVER ---
+        // --- KHỞI ĐỘNG CAST RECEIVER ---
         
         try {
             const options = new cast.framework.CastReceiverOptions();
-            options.disableIdleTimeout = true; // Không tắt màn hình khi không có nội dung
+            options.disableIdleTimeout = true;
             
             castReceiverContext.start(options);
             
-            console.log('--- Cast Receiver started successfully ---');
+            console.log('--- Cast Receiver started successfully and listening for streams ---');
             updateStatus('Cast Receiver sẵn sàng', 2000);
         } catch (error) {
             console.error('ERROR: Failed to start Cast Receiver', error);
