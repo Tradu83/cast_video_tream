@@ -2,19 +2,16 @@
 <html lang="vi">
 <!--
   ===================================================================================
-  CHIẾU YOUTUBE KARAOKE & TRUYỀN HÌNH IPTV 360TV - GOOGLE CAST WEB RECEIVER
+  CHIẾU YOUTUBE 
   ===================================================================================
   CẤU HÌNH HIỆN TẠI:
-  - Cast Application ID: EA12922D
-  - Receiver Application URL: https://tradu83.github.io/cast_video_tream/
-  - Tương thích đa nền tảng: YouTube Karaoke, DASH ClearKey DRM (TV360), HLS Live (Khán Đài TV, Pháo Hoa Live), HTTP-FLV Live (Gà Vàng 24h, Livetl004), MPEG-TS & MP4!
-  - Động cơ giải mã: Hls.js + MPEGTS.js + Flv.js + Shaka Player + Native HTML5 Hardware Demuxer.
+
   ===================================================================================
 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube Karaoke & Truyền Hình IPTV 360TV Receiver</title>
+    <title>Chiếu YouTube Karaoke & Truyền Hình Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -304,7 +301,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE KARAOKE & TRUYỀN HÌNH IPTV 360TV
+            CHIẾU YOUTUBE KARAOKE & TRUYỀN HÌNH
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV
@@ -575,7 +572,7 @@
         }
 
         // -------------------------------------------------------------------------
-        // Engine 1: MPEGTS.js (For HTTP-FLV & TS streams, e.g. Gà Vàng 24h, Livetl004)
+        // Engine 1: MPEGTS.js
         // -------------------------------------------------------------------------
         async function playWithMpegts(streamUrl, channelData) {
             log('Attempting playback with MPEGTS.js: ' + streamUrl);
@@ -670,7 +667,7 @@
         }
 
         // -------------------------------------------------------------------------
-        // Engine 1B: Flv.js Fallback (For HTTP-FLV)
+        // Engine 1B: Flv.js Fallback
         // -------------------------------------------------------------------------
         async function playWithFlvJs(streamUrl, channelData) {
             log('Attempting playback with Flv.js: ' + streamUrl);
@@ -760,7 +757,7 @@
         }
 
         // -------------------------------------------------------------------------
-        // Engine 2: Hls.js (For Live HLS .m3u8, sports streams like Pháo Hoa Live, Khán Đài TV)
+        // Engine 2: Hls.js
         // -------------------------------------------------------------------------
         async function playWithHlsJs(streamUrl, channelData) {
             log('Attempting playback with Hls.js: ' + streamUrl);
@@ -885,7 +882,7 @@
         }
 
         // -------------------------------------------------------------------------
-        // Engine 3: Shaka Player (For DASH & ClearKey DRM, e.g. TV360)
+        // Engine 3: Shaka Player
         // -------------------------------------------------------------------------
         async function playWithShaka(streamUrl, channelData) {
             log('Attempting playback with Shaka Player: ' + streamUrl);
@@ -1081,7 +1078,7 @@
                     success = await playWithNativeVideo(rawUrl, channelData);
                 }
             }
-            // CASE 2: DASH / ClearKey DRM stream (e.g. TV360, .mpd)
+            // CASE 2: DASH / ClearKey DRM stream
             else if (isDrm || urlLower.includes('.mpd') || manifestType === 'mpd') {
                 log('Executing DASH/ClearKey DRM pipeline...');
                 success = await playWithShaka(rawUrl, channelData);
