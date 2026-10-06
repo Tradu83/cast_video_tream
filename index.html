@@ -4,29 +4,38 @@
   ===================================================================================
   CHIẾU YOUTUBE KARAOKE & TRUYỀN HÌNH IPTV 360TV - GOOGLE CAST WEB RECEIVER
   ===================================================================================
+  CẤU HÌNH HIỆN TẠI:
+  - Cast Application ID: EA12922D
+  - Receiver Application URL: https://tradu83.github.io/cast_video_tream/
+  - Cơ chế ứng dụng Android: Cấu hình mã Cast động an toàn, không cố định cứng trong code.
+    Người dùng có thể nhập hoặc thay đổi bất kỳ mã Cast nào và Receiver URL trực tiếp trong app!
+
   TÀI LIỆU HƯỚNG DẪN CẤU HÌNH GITHUB PAGES & GOOGLE CAST DEVELOPER CONSOLE:
 
-  1. Cấu hình đưa file này lên GitHub Pages:
-     - Tạo hoặc vào GitHub repository của bạn (ví dụ: https://github.com/<username>/<repo>).
-     - Đặt file index.html này tại thư mục gốc (root) của nhánh 'main' hoặc 'master'.
-     - Vào mục 'Settings' của repository -> chọn 'Pages' ở menu bên trái.
+  1. Triển khai file index.html lên GitHub Pages:
+     - Đặt file index.html này tại thư mục gốc repository (ví dụ: https://github.com/tradu83/cast_video_tream).
+     - Vào repository GitHub -> Settings -> Pages.
      - Tại 'Build and deployment', chọn 'Deploy from a branch', nhánh 'main', thư mục '/ (root)'.
-     - Bấm 'Save'. Sau 1-2 phút, GitHub sẽ cấp đường dẫn Receiver công khai:
-       https://<username>.github.io/<repo>/index.html
+     - GitHub Pages URL sẽ là: https://tradu83.github.io/cast_video_tream/
 
-  2. Đăng ký trên Google Cast Developer Console:
-     - Truy cập https://cast.google.com/publish (phí đăng ký $5 một lần trọn đời).
+  2. Cấu hình trên Google Cast Developer Console:
+     - Truy cập https://cast.google.com/publish (Google Cast Developer Console).
      - Bấm 'Add New Application' -> Chọn 'Custom Receiver'.
      - Điền tên ứng dụng: "Chiếu YouTube & 360TV Receiver".
-     - Nhập Receiver Application URL: https://<username>.github.io/<repo>/index.html
-     - Bật tùy chọn 'Supports guest mode' nếu muốn bạn bè kết nối cùng phòng.
-     - Sau khi lưu, Google sẽ cấp cho bạn một mã Application ID gồm 8 ký tự (ví dụ: C995B834).
-     - Trong ứng dụng Android, mở file CastOptionsProvider.kt và cập nhật Application ID của bạn vào:
-       .setReceiverApplicationId("C995B834")
+     - Nhập Receiver Application URL: https://tradu83.github.io/cast_video_tream/
+     - Bật 'Supports guest mode' (tùy chọn) để khách cùng kết nối.
+     - Sau khi lưu, Google cấp Application ID gồm 8 ký tự: EA12922D.
 
-  3. Thêm thiết bị Test (để chạy thử ngay lập tức không cần đợi duyệt):
+  3. Thêm thiết bị Test (để chạy thử ngay lập tức không cần chờ Google publish):
      - Tại Cast Console, vào mục 'Cast Receiver Devices' -> 'Add New Device'.
-     - Nhập số Serial Number (in ở mặt sau Chromecast / hộp thiết bị).
+     - Nhập Serial Number của Chromecast / Android TV / Google TV.
+     - Sau 15 phút, thiết bị sẵn sàng nhận mã Cast EA12922D.
+
+  4. Cơ chế cấu hình an toàn trên ứng dụng Android:
+     - Không cố định cứng mã trong code.
+     - Ứng dụng tự động dùng mã EA12922D với URL https://tradu83.github.io/cast_video_tream/ làm mặc định.
+     - Người dùng có thể bấm icon Cài đặt (Settings) trên thanh công cụ trong app Android
+       để đổi sang mã Cast khác bất kỳ lúc nào, hệ thống sẽ lưu an toàn vào DataStore và nạp tức thì vào Google Cast SDK!
   ===================================================================================
 -->
 <head>
