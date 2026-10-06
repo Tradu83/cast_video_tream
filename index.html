@@ -1,297 +1,358 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Custom Cast Receiver - Video Stream</title>
+    <meta charset="UTF-8">
+    <title>Chiếu YouTube Receiver</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #FFD700; overflow: hidden;
+        }
+        #player { width: 100vw; height: 100vh; }
+        #overlay-container {
+            position: absolute; top: 20px; left: 0;
+            width: 100%; overflow: hidden;
+            pointer-events: none; z-index: 2;
+        }
+        #viewer-overlay {
+            color: #CC0000; font-weight: bold; font-family: sans-serif;
+            font-size: 40px; text-shadow: 1px 1px 2px #000;
+            display: inline-block; white-space: nowrap;
+            will-change: transform; opacity: 0;
+        }
+        #reward-overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.85);
+            font-weight: bold;
+            font-size: 36px;
+            padding: 30px 60px; border-radius: 15px;
+            opacity: 0; transition: opacity 0.5s ease-in-out; text-align: center;
+            z-index: 1000;
+            width: 80vw;
             box-sizing: border-box;
         }
-        body {
-            background-color: #000;
-            color: #fff;
-            font-family: 'Roboto', Arial, sans-serif;
+        .reward-text-blue {
+            color: #FFFFFF;
+            display: block;
+            white-space: nowrap;
             overflow: hidden;
-            width: 100vw;
-            height: 100vh;
+            text-overflow: ellipsis;
         }
-        #video {
+        .reward-score-red {
+            font-size: 72px;
+            font-weight: bold;
+            color: #FF0000;
+            line-height: 1.1;
+            margin-top: 8px;
+        }
+
+        #splash-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            object-fit: contain;
+            background-color: #000;
+            z-index: 999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            
+            /* === SỬA LỖI 1: Xếp các mục theo chiều dọc === */
+            flex-direction: column; 
+            
+            perspective: 800px; 
         }
-        #status {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            font-size: 18px;
-            z-index: 1000;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 20px;
-            border-radius: 5px;
+
+        #splash-screen img {
+            width: 250px;
+            height: auto;
+            animation: rotate3D 5s linear infinite;
         }
-        #error {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 24px;
-            color: #ff4444;
-            text-align: center;
-            z-index: 1001;
-            display: none;
+
+        @keyframes rotate3D {
+            from { transform: rotateY(0deg); }
+            to { transform: rotateY(360deg); }
         }
     </style>
+    <script>
+        (function () {
+            let styleEl;
+            function injectKeyframes(distance) {
+                if (!styleEl) {
+                    styleEl = document.createElement('style');
+                    document.head.appendChild(styleEl);
+                }
+                styleEl.textContent = `@keyframes marqueeAnim { 0% { transform: translateX(0); } 100% { transform: translateX(${distance}px); } }`;
+            }
+            window.setMarquee = function () {
+                const textEl = document.getElementById('viewer-overlay');
+                if (!textEl) return;
+                const screenWidth = window.innerWidth;
+                const textWidth = textEl.scrollWidth;
+                const distance = screenWidth - textWidth;
+                const duration = Math.max(6000, Math.min(40000, Math.abs(distance) * 12));
+                injectKeyframes(distance);
+                textEl.style.animation = `marqueeAnim ${duration}ms linear infinite alternate`;
+            };
+            window.addEventListener('resize', () => {
+                clearTimeout(window.__marqueeResizeTimer);
+                window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
+            });
+        })();
+        </script>
 </head>
 <body>
-    <div id="status">Đang khởi tạo Cast Receiver...</div>
-    <div id="error"></div>
-    <video id="video" controls autoplay playsinline></video>
+    <div id="splash-screen">
+        <img src="my_logo.png" alt="Ready to Cast">
+        <p style="color: white; font-size: 30px; font-weight: bold; text-shadow: 1px 1px 3px black; margin-top: 20px;">
+            CHƯƠNG TRÌNH HÁT KARAOKE BY TRẦN DUYÊN
+        </p>
+    </div>
+<div id="player"></div>
+<div id="overlay-container"><div id="viewer-overlay"></div></div>
+<div id="reward-overlay"></div>
 
-    <!-- Cast Receiver SDK -->
-    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-    <script>
-        console.log('=== Cast Receiver Initialization ===');
-        console.log('Loading Cast Receiver SDK...');
+<script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+    const CUSTOM_NAMESPACE = "urn:x-cast:com.tranduyen.chieuyoutube.custom";
+
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+    const viewerOverlay = document.getElementById('viewer-overlay');
+    const rewardOverlay = document.getElementById('reward-overlay');
+    let ytPlayer;
+    let isYouTubeReady = false;
+    let currentViewerName = null;
+    const rewardAudio = new Audio('music.mp3');
+    let rewardShown = false; // Biến để kiểm tra đã hiển thị thông báo khen thưởng chưa
+    let videoDuration = 0; // Thời lượng video hiện tại
+    let currentTime = 0; // Thời gian hiện tại của video 
+
+    function log(message) {
+        console.log('[YouTube Receiver]', message);
+    }
+
+    window.onYouTubeIframeAPIReady = function() {
+        log('YouTube IFrame API ready');
+        ytPlayer = new YT.Player('player', {
+            height: '100%', width: '100%',
+            playerVars: { 'autoplay': 1, 'controls': 1, 'rel': 0 },
+            events: { 
+                'onStateChange': onPlayerStateChange,
+                'onReady': onPlayerReady,
+                'onError': onPlayerError
+            }
+        });
+    };
+
+    function onPlayerReady(event) {
+        log('YouTube Player ready');
+        isYouTubeReady = true;
+    }
+
+    function onPlayerError(event) {
+        log(`Youtubeer error: ${event.data}`);
+    }
+
+    // Hàm theo dõi thời gian video để hiển thị thông báo khen thưởng
+    function checkVideoProgress() {
+        if (ytPlayer && ytPlayer.getCurrentTime && ytPlayer.getDuration) {
+            const newCurrentTime = ytPlayer.getCurrentTime();
+            const newVideoDuration = ytPlayer.getDuration();
+            
+            // Cập nhật thời gian
+            currentTime = newCurrentTime;
+            videoDuration = newVideoDuration;
+            
+            // Kiểm tra nếu video bị tua ngược (phát lại từ đầu)
+            if (newCurrentTime < currentTime - 5) {
+                log(`Video seeked backward. Resetting reward state.`);
+                rewardShown = false;
+            }
+            
+            // Hiển thị thông báo khen thưởng trước khi video kết thúc 10 giây
+            // Chỉ hiển thị nếu thông báo khen thưởng được bật
+            if (currentViewerName && !rewardShown && videoDuration > 0 && (videoDuration - currentTime) <= 10) {
+                // Kiểm tra trạng thái thông báo khen thưởng từ Android app
+                if (window.rewardNotificationEnabled !== false) {
+                    log(`Video ending soon (${Math.round(videoDuration - currentTime)}s left). Showing reward message.`);
+                    showRewardMessage(currentViewerName);
+                    rewardShown = true;
+                } else {
+                    log(`Video ending soon but reward notification is disabled.`);
+                }
+            }
+        }
+    }
+
+    // === SỬA LỖI 2: Quay về logic đơn giản và ổn định ===
+    // <<< HÃY DÙNG PHIÊN BẢN HÀM NÀY >>>
+function onPlayerStateChange(event) {
+    log(`Player state: ${event.data}`);
+    
+    if (event.data === YT.PlayerState.PLAYING) {
+        log('Video started playing. Starting progress monitoring.');
         
-        // Service Worker đã được thay thế bằng proxy server trên điện thoại
-        // Proxy server sẽ tự động thêm Referer header khi forward requests
-        console.log('Using proxy server approach - Service Worker not needed');
+        // Reset biến khi video bắt đầu phát (bao gồm cả phát lại từ đầu)
+        rewardShown = false;
+        currentTime = 0;
+        videoDuration = 0;
         
-        const castReceiverContext = cast.framework.CastReceiverContext.getInstance();
-        console.log('CastReceiverContext created successfully');
+        // Bắt đầu theo dõi tiến độ video
+        const progressInterval = setInterval(() => {
+            checkVideoProgress();
+        }, 1000); // Kiểm tra mỗi giây
         
-        const playerManager = castReceiverContext.getPlayerManager();
-        console.log('PlayerManager created successfully');
-        console.log('PlayerManager type:', typeof playerManager);
-
-        // Cấu hình player để xử lý các loại media
-        // Lưu ý: setPlaybackConfig có thể gây lỗi addEventListener trong Cast SDK v3
-        // Tạm thời bỏ qua để tránh lỗi, có thể thêm lại sau nếu cần
-        console.log('Skipping PlaybackConfig (may cause addEventListener error in Cast SDK v3)');
-
-        // Intercept LOAD message để xử lý media URL
-        console.log('Setting up LOAD message interceptor...');
-        console.log('MessageType.LOAD:', cast.framework.messages.MessageType.LOAD);
+        // Lưu interval để dừng khi video kết thúc
+        window.progressInterval = progressInterval;
+    }
+    
+    if (event.data === YT.PlayerState.PAUSED) {
+        log('Video paused. Stopping progress monitoring.');
+        // Dừng theo dõi tiến độ khi video tạm dừng
+        if (window.progressInterval) {
+            clearInterval(window.progressInterval);
+            window.progressInterval = null;
+        }
+    }
+    
+    if (event.data === YT.PlayerState.ENDED) {
+        log('Video ended. Sending signal to play next video immediately.');
         
-        try {
-            playerManager.setMessageInterceptor(
-                cast.framework.messages.MessageType.LOAD,
-                loadRequestData => {
-                    console.log('=== LOAD MESSAGE RECEIVED ===');
-                    console.log('Load request received:', loadRequestData);
-                    console.log('Load request type:', typeof loadRequestData);
-                    console.log('Load request keys:', loadRequestData ? Object.keys(loadRequestData) : 'null');
-                
-                const media = loadRequestData.media;
-                if (!media || !media.contentId) {
-                    console.error('No content ID in load request');
-                    showError('Không có URL video');
-                    return null;
-                }
-
-                const contentId = media.contentId;
-                let contentType = media.contentType || 'application/x-mpegURL';
-                
-                console.log('Content URL:', contentId);
-                console.log('Original Content Type:', contentType);
-                console.log('Stream Type:', media.streamType);
-                console.log('Media metadata:', media.metadata);
-
-                // Kiểm tra và xử lý các định dạng không được hỗ trợ
-                const urlLower = contentId.toLowerCase();
-                
-                // FLV không được Cast receiver hỗ trợ
-                if (urlLower.includes('.flv')) {
-                    console.error('=== ERROR: FLV format is not supported by Cast receiver ===');
-                    console.error('FLV files cannot be played on Cast devices');
-                    console.error('Please use MP4, HLS (m3u8), or DASH (mpd) format instead');
-                    showError('Định dạng FLV không được hỗ trợ. Vui lòng sử dụng MP4, HLS hoặc DASH.');
-                    updateStatus('Lỗi: FLV không được hỗ trợ');
-                    return null; // Reject load request
-                }
-                
-                // Tự động sửa ContentType nếu không đúng
-                if (urlLower.includes('.m3u8') || urlLower.includes('hls')) {
-                    contentType = 'application/x-mpegURL';
-                    console.log('Auto-detected HLS stream, setting ContentType to:', contentType);
-                } else if (urlLower.includes('.mpd') || urlLower.includes('dash')) {
-                    contentType = 'application/dash+xml';
-                    console.log('Auto-detected DASH stream, setting ContentType to:', contentType);
-                } else if (urlLower.includes('.mp4')) {
-                    contentType = 'video/mp4';
-                    console.log('Auto-detected MP4 stream, setting ContentType to:', contentType);
-                } else if (urlLower.includes('.webm')) {
-                    contentType = 'video/webm';
-                    console.log('Auto-detected WebM stream, setting ContentType to:', contentType);
-                }
-                
-                // Cập nhật ContentType trong loadRequestData nếu đã thay đổi
-                if (contentType !== media.contentType) {
-                    console.log('Updating ContentType from', media.contentType, 'to', contentType);
-                    media.contentType = contentType;
-                }
-                
-                console.log('Final Content Type:', contentType);
-
-                // Cập nhật status
-                updateStatus('Đang tải video...');
-
-                // Log chi tiết về stream URL
-                console.log('=== STREAM URL DETAILS ===');
-                console.log('Stream URL:', contentId);
-                console.log('ContentType:', contentType);
-                console.log('StreamType:', media.streamType);
-                console.log('Is HLS:', urlLower.includes('.m3u8'));
-                console.log('Is from fast5cdn:', contentId.includes('fast5cdn.net'));
-                
-                // Kiểm tra xem URL có cần Referer header không
-                if (contentId.includes('fast5cdn.net') || contentId.includes('xlz.livecdnem.com')) {
-                    console.warn('=== WARNING: Stream URL may require Referer header ===');
-                    console.warn('URL:', contentId);
-                    console.warn('Service Worker should add Referer: https://xlz.livecdnem.com/');
-                    console.warn('If error 905 occurs, the stream may require Referer header or have CORS issues');
-                }
-
-                // Trong Cast SDK v3, để Cast framework tự xử lý media bằng built-in player
-                // Chỉ cần return loadRequestData, không cần tự set video element
-                // Cast framework sẽ tự động sử dụng Shaka Player hoặc HTML5 player
-                console.log('=== RETURNING LOAD REQUEST TO CAST FRAMEWORK ===');
-                console.log('Final loadRequestData:', JSON.stringify(loadRequestData, null, 2));
-                console.log('Media object:', JSON.stringify(media, null, 2));
-                console.log('ContentId:', media.contentId);
-                console.log('ContentType:', media.contentType);
-                console.log('StreamType:', media.streamType);
-                
-                // Lưu ý: Nếu stream URL cần Referer header, Cast receiver's built-in player
-                // có thể không thể thêm header. Service Worker có thể không hoạt động với Shaka Player.
-                // Nếu gặp lỗi 905, có thể cần:
-                // 1. Sử dụng proxy server để thêm Referer header
-                // 2. Hoặc stream URL cần được cấu hình để không yêu cầu Referer header
-                
-                return loadRequestData;
-                }
-            );
-            console.log('LOAD message interceptor registered successfully');
-        } catch (error) {
-            console.error('ERROR: Failed to set LOAD message interceptor:', error);
-            console.error('Error details:', error.message, error.stack);
+        // Dừng theo dõi tiến độ video
+        if (window.progressInterval) {
+            clearInterval(window.progressInterval);
+            window.progressInterval = null;
         }
 
-        // Xử lý các sự kiện player
-        // Lưu ý: Trong Cast SDK v3, một số event type có thể không khả dụng
-        // Tạm thời comment out để tránh lỗi "invalid event type"
-        // Có thể sử dụng video element events thay thế (đã có ở trên)
-        
-        // Thêm event listeners để log lỗi và trạng thái
-        try {
-            // Lắng nghe sự kiện ERROR từ PlayerManager
-            playerManager.addEventListener(
-                cast.framework.events.EventType.ERROR,
-                (errorEvent) => {
-                    console.error('=== PLAYER ERROR EVENT ===');
-                    console.error('Error details:', errorEvent);
-                    console.error('Error type:', errorEvent.type);
-                    console.error('Error code:', errorEvent.detailedErrorCode);
-                    console.error('Error message:', errorEvent.message);
-                    console.error('Error reason:', errorEvent.reason);
-                    
-                    // Xử lý lỗi 905 (MEDIA_UNKNOWN)
-                    const errorCode = errorEvent.detailedErrorCode;
-                    let errorMessage = 'Lỗi phát video';
-                    
-                    if (errorCode === 905 || errorCode === '905') {
-                        errorMessage = 'Lỗi 905: Không thể tải video. URL có thể không hợp lệ hoặc không tồn tại.';
-                        console.error('=== ERROR 905: MEDIA_UNKNOWN ===');
-                        console.error('This usually means:');
-                        console.error('1. URL does not exist or is invalid');
-                        console.error('2. Server returned error (404, 403, etc.)');
-                        console.error('3. Format is not supported');
-                        console.error('4. Network/CORS issue');
-                    } else if (errorCode === 2103 || errorCode === '2103') {
-                        errorMessage = 'Lỗi 2103: Không thể load media. Vui lòng kiểm tra URL.';
-                    } else if (errorCode) {
-                        errorMessage = 'Lỗi phát video (Code: ' + errorCode + ')';
-                    }
-                    
-                    showError(errorMessage);
-                    updateStatus('Lỗi phát video');
-                }
-            );
-            console.log('ERROR event listener registered');
-        } catch (error) {
-            console.warn('Could not register ERROR event listener:', error);
-        }
-        
-        try {
-            // Lắng nghe sự kiện PLAYER_LOAD_COMPLETE
-            playerManager.addEventListener(
-                cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
-                () => {
-                    console.log('=== PLAYER LOAD COMPLETE ===');
-                    updateStatus('Video đã tải xong');
-                    setTimeout(() => updateStatus(''), 2000);
-                }
-            );
-            console.log('PLAYER_LOAD_COMPLETE event listener registered');
-        } catch (error) {
-            console.warn('Could not register PLAYER_LOAD_COMPLETE event listener:', error);
-        }
-        
-        // Lưu ý: PLAYER_LOAD_START không tồn tại trong Cast SDK v3
-        // Thay vào đó, sử dụng LOAD message interceptor để log khi bắt đầu load
-        // (Đã có logging trong LOAD message interceptor ở trên)
-        console.log('Skipping PLAYER_LOAD_START event listener (not available in Cast SDK v3)');
+        // Dọn dẹp giao diện
+        viewerOverlay.style.opacity = 0;
+        viewerOverlay.style.animation = "none";
 
-        // Hàm cập nhật status
-        function updateStatus(message) {
-            const statusEl = document.getElementById('status');
-            if (message) {
-                statusEl.textContent = message;
-                statusEl.style.display = 'block';
+        // Gửi tín hiệu về ứng dụng ngay lập tức để phát video tiếp theo
+        const message = { type: "VIDEO_ENDED" };
+        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, message);
+        log('VIDEO_ENDED signal sent to Android app.');
+    }
+}
+
+    context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
+        const data = event.data;
+        log(`Received custom message: ${JSON.stringify(data)}`);
+        
+        if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
+            if (data.media) {
+                log(`Executing command '${data.type}' for video: ${data.media.contentId}`);
+                loadVideoFromMessage(data.media);
+            }
+        } else if (data.type === "REWARD_NOTIFICATION_STATUS") {
+            // Cập nhật trạng thái thông báo khen thưởng
+            window.rewardNotificationEnabled = data.enabled;
+            log(`Reward notification status updated: ${data.enabled ? 'enabled' : 'disabled'}`);
+        }
+    });
+
+    function loadVideoFromMessage(media) {
+        // Dừng nhạc khen thưởng của video cũ
+        rewardAudio.pause();
+        rewardAudio.currentTime = 0;
+
+        // Dừng theo dõi tiến độ video cũ
+        if (window.progressInterval) {
+            clearInterval(window.progressInterval);
+            window.progressInterval = null;
+        }
+
+        // Reset biến cho video mới
+        rewardShown = false;
+        currentTime = 0;
+        videoDuration = 0;
+
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+            splash.style.display = 'none';
+        }
+
+            const videoId = media.contentId;
+            const customData = media.customData || {};
+            
+            if (isYouTubeReady && ytPlayer && videoId) {
+                ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+        }
+
+        currentViewerName = customData.viewerName;
+        if (currentViewerName) {
+            viewerOverlay.textContent = `Trình bày: ${currentViewerName}`;
+                viewerOverlay.style.opacity = 1;
+                setTimeout(setMarquee, 0);
             } else {
-                statusEl.style.display = 'none';
+                viewerOverlay.textContent = "";
+                viewerOverlay.style.opacity = 0;
+                viewerOverlay.style.animation = "none";
+        }
+    }
+
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.LOAD,
+        loadRequestData => {
+            log('Standard LOAD command received for the first video.');
+            if (loadRequestData.media) {
+                loadVideoFromMessage(loadRequestData.media);
             }
+            return null;
         }
+    );
 
-        // Hàm hiển thị lỗi
-        function showError(message) {
-            const errorEl = document.getElementById('error');
-            errorEl.textContent = message;
-            errorEl.style.display = 'block';
-            setTimeout(() => {
-                errorEl.style.display = 'none';
-            }, 5000);
-        }
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.PLAY,
+        () => { if (ytPlayer) ytPlayer.playVideo(); return null; }
+    );
 
-        // Khởi động Cast Receiver
-        console.log('Starting Cast Receiver...');
-        try {
-            const options = new cast.framework.CastReceiverOptions();
-            options.disableIdleTimeout = true;
-            castReceiverContext.start(options);
+    playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.PAUSE,
+        () => { if (ytPlayer) ytPlayer.pauseVideo(); return null; }
+    );
 
-            console.log('=== Cast Receiver started successfully ===');
-            console.log('Cast Receiver initialized and ready');
-            updateStatus('Cast Receiver sẵn sàng');
-        } catch (error) {
-            console.error('=== ERROR: Failed to start Cast Receiver ===');
-            console.error('Error details:', error);
-            console.error('Error message:', error.message);
-            showError('Lỗi khởi tạo Cast Receiver: ' + error.message);
-            updateStatus('Lỗi khởi tạo');
-        }
+    function showRewardMessage(viewerName) {
+        const startScore = 20;
+        const finalScore = Math.floor(Math.random() * 16) + 85;
+        let currentScore = startScore;
+
+        rewardOverlay.innerHTML =
+            `<div class="reward-text-blue">Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,</div>` +
+            `<div class="reward-text-blue">điểm khen ngợi</div>` +
+            `<div class="reward-score-red"><span id="score-counter">${startScore}</span> điểm</div>`;
+
+        const scoreElement = document.getElementById('score-counter');
+        rewardOverlay.style.opacity = 1;
+        log(`Showing reward message for ${viewerName}. Counting from ${startScore} to ${finalScore}`);
         
-        // Ẩn status sau 3 giây nếu không có video
-        setTimeout(() => {
-            const video = document.getElementById('video');
-            if (!video.src) {
-                updateStatus('');
+        // Phát nhạc
+        rewardAudio.currentTime = 0;
+        rewardAudio.play();
+
+        const counterInterval = setInterval(() => {
+            if (currentScore < finalScore) {
+                currentScore++;
+                scoreElement.textContent = currentScore;
+            } else {
+                clearInterval(counterInterval);
             }
-        }, 3000);
-    </script>
+        }, 50);
+
+            setTimeout(() => { 
+                rewardOverlay.style.opacity = 0; 
+            clearInterval(counterInterval);
+                log('Reward message hidden');
+        }, 10000); // Đặt lại thời gian hiển thị 10 giây như mong muốn
+    }
+
+    const options = new cast.framework.CastReceiverOptions();
+    options.disableIdleTimeout = true;
+    context.start(options);
+    log('Cast receiver started');
+</script>
 </body>
 </html>
