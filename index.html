@@ -2,13 +2,13 @@
 <html lang="vi">
 <!--
   ===================================================================================
-
+ 
   ===================================================================================
 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube, IPTV TV & Phản Chiếu Media Receiver</title>
+    <title>Chiếu YouTube, TV & Phản Chiếu Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -767,7 +767,7 @@
                         type: isFlv ? 'flv' : 'mse',
                         isLive: true,
                         url: streamUrl,
-                        cors: true
+                        cors: false
                     }, {
                         enableWorker: false,
                         lazyLoad: false,
@@ -857,7 +857,7 @@
                         type: 'flv',
                         isLive: true,
                         url: streamUrl,
-                        cors: true
+                        cors: false
                     }, {
                         enableWorker: false,
                         lazyLoad: false,
