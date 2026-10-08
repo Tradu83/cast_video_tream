@@ -8,7 +8,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube Karaoke, IPTV TV & Phản Chiếu Media Receiver</title>
+    <title>Chiếu YouTube, IPTV TV & Phản Chiếu Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -393,7 +393,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE & TRUYỀN HÌNH TV
+            CHIẾU YOUTUBE & TRUYỀN HÌNH
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -767,7 +767,7 @@
                         type: isFlv ? 'flv' : 'mse',
                         isLive: true,
                         url: streamUrl,
-                        cors: false
+                        cors: true
                     }, {
                         enableWorker: false,
                         lazyLoad: false,
@@ -857,7 +857,7 @@
                         type: 'flv',
                         isLive: true,
                         url: streamUrl,
-                        cors: false
+                        cors: true
                     }, {
                         enableWorker: false,
                         lazyLoad: false,
@@ -1294,7 +1294,7 @@
             const formatEl = document.getElementById('iptv-banner-format');
 
             titleEl.textContent = data.channelName || data.name || "Kênh TV";
-            groupEl.textContent = data.groupTitle || "Truyền hình TV";
+            groupEl.textContent = data.groupTitle || "Truyền hình 360TV";
 
             if (data.logoUrl && data.logoUrl.trim().length > 0) {
                 logoEl.src = data.logoUrl;
