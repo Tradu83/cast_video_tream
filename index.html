@@ -2,15 +2,13 @@
 <html lang="vi">
 <!--
   ===================================================================================
-
-  ===================================================================================
  
   ===================================================================================
 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube, TV & Phản Chiếu Media Receiver</title>
+    <title>Chiếu YouTube , TV & Phản Chiếu Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -395,7 +393,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE & TRUYỀN HÌNH
+            CHIẾU YOUTUBE KARAOKE & TRUYỀN HÌNH IPTV 360TV
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -1485,6 +1483,7 @@
             const customData = media.customData || {};
             const streamUrl = customData.streamUrl || media.contentId;
             const audioUrl = customData.audioUrl || "";
+            const fallbackVideoId = customData.videoId || (media.contentId && media.contentId.length === 11 ? media.contentId : null);
             currentViewerName = customData.viewerName || "";
 
             if (currentViewerName) {
@@ -1509,34 +1508,61 @@
                 existingAudio.remove();
             }
 
-            if (audioUrl) {
-                log('Playing adaptive high-res stream with separate video and audio URLs on TV...');
-                iptvVideo.muted = true;
-                iptvVideo.src = streamUrl;
-                iptvVideo.load();
+            let playedSuccessfully = false;
 
-                const audioEl = document.createElement('audio');
-                audioEl.id = 'iptv-audio';
-                audioEl.playsInline = true;
-                audioEl.muted = false;
-                audioEl.volume = 1.0;
-                audioEl.src = audioUrl;
-                iptvContainer.appendChild(audioEl);
+            const onErrorHandler = () => {
+                if (!playedSuccessfully && fallbackVideoId) {
+                    log('Direct stream failed, falling back to YouTube player with videoId: ' + fallbackVideoId);
+                    stopIptv();
+                    loadVideoFromMessage({ contentId: fallbackVideoId, customData: customData });
+                }
+            };
+            iptvVideo.onerror = onErrorHandler;
 
-                iptvVideo.onplay = () => { audioEl.play().catch(e => log('Audio play sync error: ' + e.message)); };
-                iptvVideo.onpause = () => { audioEl.pause(); };
-                iptvVideo.onseeking = () => { audioEl.currentTime = iptvVideo.currentTime; };
-                iptvVideo.onratechange = () => { audioEl.playbackRate = iptvVideo.playbackRate; };
+            try {
+                if (audioUrl) {
+                    log('Playing adaptive high-res stream with separate video and audio URLs on TV...');
+                    iptvVideo.muted = true;
+                    iptvVideo.src = streamUrl;
+                    iptvVideo.load();
 
-                iptvVideo.play().then(() => {
-                    audioEl.play().catch(e => log('Audio play error: ' + e.message));
-                }).catch(e => log('Video play error: ' + e.message));
-            } else {
-                const lowerUrl = (streamUrl || "").toLowerCase();
-                if (lowerUrl.includes('.m3u8')) {
-                    await playWithHlsJs(streamUrl, { streamUrl: streamUrl });
+                    const audioEl = document.createElement('audio');
+                    audioEl.id = 'iptv-audio';
+                    audioEl.playsInline = true;
+                    audioEl.muted = false;
+                    audioEl.volume = 1.0;
+                    audioEl.src = audioUrl;
+                    iptvContainer.appendChild(audioEl);
+
+                    iptvVideo.onplay = () => { playedSuccessfully = true; audioEl.play().catch(e => log('Audio play sync error: ' + e.message)); };
+                    iptvVideo.onpause = () => { audioEl.pause(); };
+                    iptvVideo.onseeking = () => { audioEl.currentTime = iptvVideo.currentTime; };
+                    iptvVideo.onratechange = () => { audioEl.playbackRate = iptvVideo.playbackRate; };
+
+                    await iptvVideo.play();
+                    await audioEl.play();
+                    playedSuccessfully = true;
                 } else {
-                    await playWithNativeVideo(streamUrl, { streamUrl: streamUrl });
+                    const lowerUrl = (streamUrl || "").toLowerCase();
+                    let success = false;
+                    if (lowerUrl.includes('.m3u8')) {
+                        success = await playWithHlsJs(streamUrl, { streamUrl: streamUrl });
+                    } else {
+                        success = await playWithNativeVideo(streamUrl, { streamUrl: streamUrl });
+                    }
+                    if (success) {
+                        playedSuccessfully = true;
+                    } else if (fallbackVideoId) {
+                        log('Direct stream playback failed, falling back to YouTube player...');
+                        stopIptv();
+                        loadVideoFromMessage({ contentId: fallbackVideoId, customData: customData });
+                    }
+                }
+            } catch (err) {
+                log('Exception in playKaraokeDirectStream: ' + err.message);
+                if (!playedSuccessfully && fallbackVideoId) {
+                    stopIptv();
+                    loadVideoFromMessage({ contentId: fallbackVideoId, customData: customData });
                 }
             }
         }
@@ -1565,11 +1591,13 @@
 
             if (splashScreen) splashScreen.style.display = 'none';
 
-            const videoId = media.contentId;
+            const videoId = media.contentId || (media.customData && media.customData.videoId);
             const customData = media.customData || {};
 
             if (isYouTubeReady && ytPlayer && videoId) {
                 ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+            } else if (videoId) {
+                window.pendingYouTubeVideoId = videoId;
             }
 
             currentViewerName = customData.viewerName;
@@ -1666,7 +1694,7 @@
                     const iptvData = {
                         streamUrl: customData.streamUrl || media.contentId,
                         channelName: customData.channelName || (media.metadata ? media.metadata.title : "Kênh IPTV"),
-                        groupTitle: customData.groupTitle || (media.metadata ? media.metadata.subtitle : "Truyền hình TV"),
+                        groupTitle: customData.groupTitle || (media.metadata ? media.metadata.subtitle : "Truyền hình 360TV"),
                         logoUrl: customData.logoUrl || (media.metadata && media.metadata.images && media.metadata.images[0] ? media.metadata.images[0].url : ""),
                         licenseKey: customData.licenseKey || "",
                         userAgent: customData.userAgent || "",
@@ -1759,7 +1787,7 @@
         const options = new cast.framework.CastReceiverOptions();
         options.disableIdleTimeout = true;
         context.start(options);
-        log('Cast receiver initialized and running successfully with YouTube Karaoke, IPTV 360TV & Local Media support.');
+        log('Cast receiver initialized and running successfully with YouTube Karaoke, IPTV TV & Local Media support.');
     </script>
 </body>
 </html>
