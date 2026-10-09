@@ -2,13 +2,12 @@
 <html lang="vi">
 <!--
   ===================================================================================
- 
   ===================================================================================
 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube, TV & Phản Chiếu Media Receiver</title>
+    <title>Chiếu YouTube, TV & Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -386,6 +385,14 @@
                 window.__marqueeResizeTimer = setTimeout(window.setMarquee, 150);
             });
         })();
+
+        // [MỚI] Hàm trích xuất ID YouTube chuẩn xác từ mọi loại link
+        window.extractYouTubeId = function(url) {
+            if (!url || typeof url !== 'string') return null;
+            if (url.length === 11 && !url.includes('://') && !url.includes('/')) return url;
+            const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+            return match ? match[1] : null;
+        };
     </script>
 </head>
 <body>
@@ -393,7 +400,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE & TV-MEDIA
+            CHIẾU YOUTUBE & TV & MEDIA
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -665,7 +672,11 @@
                 currentFlvInstance = null;
             }
             if (shakaPlayer) {
-                try { shakaPlayer.unload(); } catch (e) {}
+                try { 
+                    shakaPlayer.unload(); 
+                    // Reset request filter để tránh lưu header rác
+                    shakaPlayer.getNetworkingEngine().clearAllRequestFilters();
+                } catch (e) {}
             }
             resetVideoElement();
             activeEngine = "NONE";
@@ -763,12 +774,19 @@
                 let resolved = false;
                 try {
                     const isFlv = streamUrl.toLowerCase().includes('.flv') || (channelData.manifestType || '').toLowerCase() === 'flv';
-                    const player = mpegts.createPlayer({
+                    const config = {
                         type: isFlv ? 'flv' : 'mse',
                         isLive: true,
                         url: streamUrl,
                         cors: false
-                    }, {
+                    };
+                    
+                    // [MỚI] Hỗ trợ truyền Header (User-Agent/Referer)
+                    if (channelData.headers && Object.keys(channelData.headers).length > 0) {
+                        config.headers = channelData.headers;
+                    }
+
+                    const player = mpegts.createPlayer(config, {
                         enableWorker: false,
                         lazyLoad: false,
                         enableStashBuffer: false,
@@ -853,12 +871,19 @@
             return new Promise((resolve) => {
                 let resolved = false;
                 try {
-                    const player = flvjs.createPlayer({
+                    const config = {
                         type: 'flv',
                         isLive: true,
                         url: streamUrl,
                         cors: false
-                    }, {
+                    };
+                    
+                    // [MỚI] Hỗ trợ truyền Header (User-Agent/Referer)
+                    if (channelData.headers && Object.keys(channelData.headers).length > 0) {
+                        config.headers = channelData.headers;
+                    }
+
+                    const player = flvjs.createPlayer(config, {
                         enableWorker: false,
                         lazyLoad: false,
                         enableStashBuffer: false,
@@ -942,7 +967,7 @@
                 let resolved = false;
                 let fatalRetryCount = 0;
                 try {
-                    const hls = new Hls({
+                    const hlsOptions = {
                         enableWorker: false,
                         lowLatencyMode: true,
                         backBufferLength: 30,
@@ -954,7 +979,18 @@
                         manifestLoadingRetryDelay: 800,
                         fragLoadingMaxRetry: 4,
                         fragLoadingRetryDelay: 800
-                    });
+                    };
+                    
+                    // [MỚI] Hỗ trợ chèn Header cho Hls.js
+                    if (channelData.headers && Object.keys(channelData.headers).length > 0) {
+                        hlsOptions.xhrSetup = function(xhr, url) {
+                            for (const key in channelData.headers) {
+                                try { xhr.setRequestHeader(key, channelData.headers[key]); } catch(e) {}
+                            }
+                        };
+                    }
+
+                    const hls = new Hls(hlsOptions);
 
                     currentHlsInstance = hls;
                     hls.attachMedia(iptvVideo);
@@ -1057,6 +1093,16 @@
             if (!shakaPlayer) return false;
 
             try {
+                // [MỚI] Xử lý chèn Header cho luồng DASH/MPD
+                if (channelData.headers && Object.keys(channelData.headers).length > 0) {
+                    shakaPlayer.getNetworkingEngine().registerRequestFilter((type, request) => {
+                        for (const key in channelData.headers) {
+                            request.headers[key] = channelData.headers[key];
+                        }
+                    });
+                }
+
+                // CẤU HÌNH DRM
                 const clearKeys = parseClearKey(channelData.licenseKey);
                 if (clearKeys) {
                     log('Configuring Shaka ClearKey DRM: ' + JSON.stringify(clearKeys));
@@ -1287,6 +1333,9 @@
         }
 
         function showIptvBanner(data) {
+            // KHÔNG hiện banner OSD IPTV nếu đang ở chế độ hát Karaoke
+            if (currentMode === "KARAOKE_DIRECT") return;
+
             const logoEl = document.getElementById('iptv-banner-logo');
             const titleEl = document.getElementById('iptv-banner-title');
             const groupEl = document.getElementById('iptv-banner-group');
@@ -1463,7 +1512,7 @@
         }
 
         // =========================================================================
-        // 5B. KARAOKE DIRECT STREAM PLAYBACK (GOOGLEVIDEO CDN DIRECT / MP4 / HLS)
+        // 5B. KARAOKE DIRECT STREAM PLAYBACK (GOOGLEVIDEO CDN DIRECT / MP4 / HLS / FLV)
         // =========================================================================
         async function playKaraokeDirectStream(media) {
             log('Loading Karaoke Direct Stream: ' + JSON.stringify(media));
@@ -1483,7 +1532,11 @@
             const customData = media.customData || {};
             const streamUrl = customData.streamUrl || media.contentId;
             const audioUrl = customData.audioUrl || "";
-            const fallbackVideoId = customData.videoId || (media.contentId && media.contentId.length === 11 ? media.contentId : null);
+            
+            // Tìm ID dự phòng
+            const fallbackRaw = customData.videoId || media.contentId;
+            const fallbackVideoId = window.extractYouTubeId(fallbackRaw) || (fallbackRaw.length === 11 ? fallbackRaw : null);
+            
             currentViewerName = customData.viewerName || "";
 
             if (currentViewerName) {
@@ -1543,13 +1596,26 @@
                     await audioEl.play();
                     playedSuccessfully = true;
                 } else {
+                    const headersObj = customData.headers || {};
+                    if (customData.userAgent) headersObj['User-Agent'] = customData.userAgent;
+                    if (customData.referrer) headersObj['Referer'] = customData.referrer;
+                    
+                    const channelData = { streamUrl: streamUrl, manifestType: customData.manifestType || "", headers: headersObj };
                     const lowerUrl = (streamUrl || "").toLowerCase();
                     let success = false;
-                    if (lowerUrl.includes('.m3u8')) {
-                        success = await playWithHlsJs(streamUrl, { streamUrl: streamUrl });
+                    
+                    // Thử mọi bộ phát tùy định dạng thay vì chỉ giới hạn HLS
+                    if (lowerUrl.includes('.flv') || channelData.manifestType === 'flv') {
+                        success = await playWithMpegts(streamUrl, channelData);
+                        if (!success) success = await playWithFlvJs(streamUrl, channelData);
+                    } else if (lowerUrl.includes('.m3u8')) {
+                        success = await playWithHlsJs(streamUrl, channelData);
+                    } else if (lowerUrl.includes('.mpd')) {
+                        success = await playWithShaka(streamUrl, channelData);
                     } else {
-                        success = await playWithNativeVideo(streamUrl, { streamUrl: streamUrl });
+                        success = await playWithNativeVideo(streamUrl, channelData);
                     }
+                    
                     if (success) {
                         playedSuccessfully = true;
                     } else if (fallbackVideoId) {
@@ -1566,3 +1632,246 @@
                 }
             }
         }
+
+        // =========================================================================
+        // 6. YOUTUBE LOAD VIDEO
+        // =========================================================================
+        function loadVideoFromMessage(media) {
+            log('Loading YouTube video from message: ' + JSON.stringify(media));
+            stopIptv();
+            stopPhoto();
+            currentMode = "YOUTUBE";
+
+            ytPlayerContainer.style.display = 'block';
+            rewardAudio.pause();
+            rewardAudio.currentTime = 0;
+
+            if (window.progressInterval) {
+                clearInterval(window.progressInterval);
+                window.progressInterval = null;
+            }
+
+            rewardShown = false;
+            currentTime = 0;
+            videoDuration = 0;
+
+            if (splashScreen) splashScreen.style.display = 'none';
+
+            // [SỬA LỖI YOUTUBE FULL LINK] Sử dụng extractYouTubeId thay vì đọc thẳng
+            const rawVideoId = media.contentId || (media.customData && media.customData.videoId);
+            const videoId = window.extractYouTubeId(rawVideoId) || rawVideoId;
+
+            if (isYouTubeReady && ytPlayer && videoId) {
+                ytPlayer.loadVideoById({ videoId: videoId, suggestedQuality: 'hd1080' });
+            } else if (videoId) {
+                window.pendingYouTubeVideoId = videoId;
+            }
+
+            currentViewerName = media.customData ? media.customData.viewerName : null;
+            if (currentViewerName) {
+                viewerOverlay.textContent = `Trình bày: ${currentViewerName}`;
+                viewerOverlay.style.opacity = 1;
+                setTimeout(setMarquee, 0);
+            } else {
+                viewerOverlay.textContent = "";
+                viewerOverlay.style.opacity = 0;
+                viewerOverlay.style.animation = "none";
+            }
+        }
+
+        // =========================================================================
+        // 7. CUSTOM MESSAGE LISTENER
+        // =========================================================================
+        context.addCustomMessageListener(CUSTOM_NAMESPACE, event => {
+            const data = event.data;
+            log(`Received custom message from sender: ${JSON.stringify(data)}`);
+
+            if (data.type === "PLAY_IPTV") {
+                playIptvChannel(data);
+            } else if (data.type === "STOP_IPTV") {
+                stopIptv();
+            } else if (data.type === "PAUSE_IPTV") {
+                pauseIptv();
+            } else if (data.type === "RESUME_IPTV") {
+                resumeIptv();
+            } else if (data.type === "TOGGLE_IPTV") {
+                if (iptvVideo.paused) resumeIptv(); else pauseIptv();
+            } else if (data.type === "CYCLE_ASPECT_RATIO") {
+                cycleAspectRatio();
+            } else if (data.type === "SHOW_OSD") {
+                if (activeChannelData) {
+                    showIptvBanner(activeChannelData);
+                } else {
+                    showIptvBanner(data);
+                }
+            } else if (data.type === "SHOW_PHOTO") {
+                showPhoto(data);
+            } else if (data.type === "ROTATE_PHOTO") {
+                rotatePhoto(data.rotation || 0);
+            } else if (data.type === "STOP_PHOTO") {
+                stopPhoto();
+            } else if (data.type === "PLAY_LOCAL_VIDEO") {
+                playLocalVideo(data);
+            } else if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
+                if (data.media) {
+                    loadVideoFromMessage(data.media);
+                }
+            } else if (data.type === "REWARD_NOTIFICATION_STATUS") {
+                window.rewardNotificationEnabled = data.enabled;
+            }
+        });
+
+        // =========================================================================
+        // 8. CAF RECEIVER INTERCEPTORS
+        // =========================================================================
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.LOAD,
+            loadRequestData => {
+                log('Standard LOAD command received: ' + JSON.stringify(loadRequestData.media));
+                const media = loadRequestData.media;
+                if (!media) return null;
+
+                const customData = media.customData || {};
+                const contentType = (media.contentType || "").toLowerCase();
+                const contentId = media.contentId || "";
+                const contentIdLower = contentId.toLowerCase();
+
+                // [MỚI] Xác định Video ID Youtube để tránh bị bắt nhầm vào nhánh IPTV
+                const ytId = window.extractYouTubeId(contentId) || window.extractYouTubeId(customData.videoId) || window.extractYouTubeId(customData.streamUrl);
+                const isYouTubeMedia = (ytId !== null && (contentIdLower.includes('youtube.com') || contentIdLower.includes('youtu.be')));
+                const forceYouTube = customData.mediaType === "YOUTUBE" || customData.type === "PLAY_YOUTUBE";
+
+                // Case A: Local Photo
+                if (customData.mediaType === "LOCAL_PHOTO" || customData.type === "SHOW_PHOTO") {
+                    showPhoto(customData);
+                    return null;
+                }
+
+                // Case B: Local Video
+                if (customData.mediaType === "LOCAL_VIDEO" || customData.type === "PLAY_LOCAL_VIDEO") {
+                    playLocalVideo(customData);
+                    return null;
+                }
+                
+                // Case C: Youtube Link Override (Cứu lỗi "Không nhận diện được link Youtube do chứa http://")
+                if (forceYouTube || isYouTubeMedia) {
+                    loadVideoFromMessage(media);
+                    return null;
+                }
+
+                // Case D: Karaoke Direct Stream (GoogleVideo Direct CDN / MP4 / HLS)
+                if (customData.isDirectStream === true || customData.mediaType === "KARAOKE_DIRECT") {
+                    playKaraokeDirectStream(media);
+                    return null;
+                }
+
+                // Case E: IPTV stream request (Đã bổ sung Headers)
+                if (customData.mediaType === "IPTV" || customData.type === "PLAY_IPTV" ||
+                    contentType.includes("dash") || contentType.includes("mpegurl") ||
+                    contentType.includes("flv") || contentType.includes("mp2t") ||
+                    contentIdLower.includes('.m3u8') || contentIdLower.includes('.flv') || contentIdLower.includes('.mpd') || contentIdLower.includes('.ts') ||
+                    contentIdLower.startsWith("http://") || contentIdLower.startsWith("https://")) {
+                    
+                    const headersObj = customData.headers || {};
+                    if (customData.userAgent) headersObj['User-Agent'] = customData.userAgent;
+                    if (customData.referrer) headersObj['Referer'] = customData.referrer;
+
+                    const iptvData = {
+                        streamUrl: customData.streamUrl || contentId,
+                        channelName: customData.channelName || (media.metadata ? media.metadata.title : "Kênh IPTV"),
+                        groupTitle: customData.groupTitle || (media.metadata ? media.metadata.subtitle : "Truyền hình 360TV"),
+                        logoUrl: customData.logoUrl || (media.metadata && media.metadata.images && media.metadata.images[0] ? media.metadata.images[0].url : ""),
+                        licenseKey: customData.licenseKey || "",
+                        headers: headersObj,
+                        manifestType: customData.manifestType || ""
+                    };
+                    playIptvChannel(iptvData);
+                    return null;
+                }
+
+                // Default: YouTube Karaoke video
+                loadVideoFromMessage(media);
+                return null;
+            }
+        );
+
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.PLAY,
+            () => {
+                if (currentMode === "IPTV") {
+                    resumeIptv();
+                } else if (ytPlayer) {
+                    ytPlayer.playVideo();
+                }
+                return null;
+            }
+        );
+
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.PAUSE,
+            () => {
+                if (currentMode === "IPTV") {
+                    pauseIptv();
+                } else if (ytPlayer) {
+                    ytPlayer.pauseVideo();
+                }
+                return null;
+            }
+        );
+
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.STOP,
+            () => {
+                if (currentMode === "IPTV") {
+                    stopIptv();
+                } else if (currentMode === "PHOTO") {
+                    stopPhoto();
+                } else if (ytPlayer) {
+                    ytPlayer.stopVideo();
+                }
+                return null;
+            }
+        );
+
+        // =========================================================================
+        // 9. KARAOKE REWARD POPUP
+        // =========================================================================
+        function showRewardMessage(viewerName) {
+            const startScore = 20;
+            const finalScore = Math.floor(Math.random() * 16) + 85;
+            let currentScore = startScore;
+
+            rewardOverlay.innerHTML =
+                `<div class="reward-text-blue">Ca sỹ ${viewerName} đã thể hiện bài hát rất tốt,</div>` +
+                `<div class="reward-text-blue">điểm khen ngợi</div>` +
+                `<div class="reward-score-red"><span id="score-counter">${startScore}</span> điểm</div>`;
+
+            const scoreElement = document.getElementById('score-counter');
+            rewardOverlay.style.opacity = 1;
+            log(`Showing reward message for ${viewerName}. Counting from ${startScore} to ${finalScore}`);
+
+            rewardAudio.currentTime = 0;
+            rewardAudio.play().catch(e => log('Audio play error: ' + e.message));
+
+            const counterInterval = setInterval(() => {
+                if (currentScore < finalScore) {
+                    currentScore++;
+                    scoreElement.textContent = currentScore;
+                } else {
+                    clearInterval(counterInterval);
+                }
+            }, 50);
+
+            setTimeout(() => {
+                rewardOverlay.style.opacity = 0;
+                clearInterval(counterInterval);
+            }, 10000);
+        }
+
+        const options = new cast.framework.CastReceiverOptions();
+        options.disableIdleTimeout = true;
+        context.start(options);
+        log('Cast receiver initialized and running successfully with YouTube Karaoke, IPTV 360TV & Local Media support.');
+    </script>
+</body>
+</html>
