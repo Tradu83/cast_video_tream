@@ -2,12 +2,13 @@
 <html lang="vi">
 <!--
   ===================================================================================
+ 
   ===================================================================================
 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube, TV & Media Receiver</title>
+    <title>Chiếu YouTube, TV & Phản Chiếu Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -400,7 +401,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE & TV & MEDIA
+            CHIẾU YOUTUBE - TV & MEDIA
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -1721,13 +1722,67 @@
             }
         });
 
+        // [MỚI] HÀM DỌN DẸP SẠCH BỘ NHỚ VÀ TÀI NGUYÊN GPU TIVI (HARD CLEANUP)
+        function hardCleanupAllPlayers() {
+            log('Executing hardCleanupAllPlayers: Clearing all player instances, memory and GPU resources...');
+            cleanupCurrentIptvPlayer();
+            const existingAudio = document.getElementById('iptv-audio');
+            if (existingAudio) {
+                try {
+                    existingAudio.pause();
+                    existingAudio.removeAttribute('src');
+                    existingAudio.load();
+                    existingAudio.remove();
+                } catch (e) {}
+            }
+            if (typeof iptvContainer !== 'undefined' && iptvContainer) {
+                iptvContainer.style.display = 'none';
+            }
+            if (typeof iptvVideo !== 'undefined' && iptvVideo) {
+                try {
+                    iptvVideo.pause();
+                    iptvVideo.removeAttribute('src');
+                    iptvVideo.load();
+                } catch (e) {}
+            }
+            if (typeof ytPlayer !== 'undefined' && ytPlayer && typeof ytPlayer.stopVideo === 'function') {
+                try {
+                    ytPlayer.stopVideo();
+                    ytPlayer.clearVideo();
+                } catch (e) {}
+            }
+            if (typeof ytPlayerContainer !== 'undefined' && ytPlayerContainer) {
+                ytPlayerContainer.style.display = 'none';
+            }
+            if (typeof stopPhoto === 'function') {
+                try { stopPhoto(); } catch (e) {}
+            }
+            if (typeof hideIptvLoading === 'function') hideIptvLoading();
+            if (typeof iptvBanner !== 'undefined' && iptvBanner) {
+                iptvBanner.classList.remove('visible');
+            }
+            if (typeof viewerOverlay !== 'undefined' && viewerOverlay) {
+                viewerOverlay.style.opacity = 0;
+            }
+            if (typeof currentMode !== 'undefined') {
+                currentMode = "IDLE";
+            }
+        }
+
         // =========================================================================
         // 8. CAF RECEIVER INTERCEPTORS
         // =========================================================================
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.LOAD,
-            loadRequestData => {
+            async loadRequestData => {
                 log('Standard LOAD command received: ' + JSON.stringify(loadRequestData.media));
+                
+                // [MỚI] Hard cleanup all players and GPU resources before loading new content
+                hardCleanupAllPlayers();
+                
+                // Small delay (150ms) to ensure memory/GPU cleanup completes and prevents black screen
+                await new Promise(resolve => setTimeout(resolve, 150));
+
                 const media = loadRequestData.media;
                 if (!media) return null;
 
