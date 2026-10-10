@@ -401,7 +401,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE - TRUYỀN HÌNH & MEDIA
+            CHIẾU YOUTUBE & TRUYỀN HÌNH & MEDIA
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -1453,30 +1453,27 @@
         let currentPhotoScale = 1;
         let currentPhotoX = 0;
         let currentPhotoY = 0;
+        let currentPhotoMode = 'fill'; // 'fill' (cover, no black bars) or 'contain' (show entire photo)
 
         function applyPhotoTransform() {
             if (!activePhotoData) return;
             const naturalW = photoImg.naturalWidth || activePhotoData.width || 0;
             const naturalH = photoImg.naturalHeight || activePhotoData.height || 0;
 
-            // Kiểm tra xem trình duyệt tivi đã tự động nhận diện dọc/ngang hay chưa
             const browserIsPortrait = naturalH > naturalW;
             const appIsPortrait = activePhotoData.isPortrait === true;
 
-            // Nếu ảnh thực tế chụp dọc (appIsPortrait = true) nhưng trình duyệt tivi nạp khung ngang (naturalW > naturalH),
-            // tức ảnh đang bị xoay ngang trên TV -> tự động bù góc xoay EXIF (thường 90° hoặc 270°)
             let exifCorrection = 0;
             if (appIsPortrait && !browserIsPortrait && activePhotoData.rotationDegrees) {
                 exifCorrection = activePhotoData.rotationDegrees;
             }
 
             const totalRotation = (currentPhotoRotation + exifCorrection) % 360;
+            const effectivePortrait = (totalRotation % 180 !== 0) ? !appIsPortrait : appIsPortrait;
+
             photoImg.style.transform = `translate(${currentPhotoX}px, ${currentPhotoY}px) scale(${currentPhotoScale}) rotate(${totalRotation}deg)`;
 
-            // Nếu là ảnh dọc (effectivePortrait = true) trên TV màn hình ngang,
-            // hiển thị full màn hình TV theo chiều cao (height: 100vh, width: auto) để KHÔNG có dải đen 2 bên (không co giãn/bóp méo).
-            // Các chi tiết ảnh bị khuất có thể pan/zoom trực tiếp từ điện thoại.
-            if (effectivePortrait) {
+            if (effectivePortrait && currentPhotoMode === 'fill') {
                 photoImg.style.width = 'auto';
                 photoImg.style.height = '100vh';
                 photoImg.style.maxWidth = 'none';
@@ -1496,11 +1493,10 @@
             }
 
             // Hiển thị nhãn nhận diện trên OSD banner
-            const effectivePortrait = (totalRotation % 180 !== 0) ? !appIsPortrait : appIsPortrait;
             if (photoOrientationBadge) {
                 photoOrientationBadge.style.display = 'inline-block';
                 if (effectivePortrait) {
-                    photoOrientationBadge.textContent = 'ẢNH DỌC (PORTRAIT)';
+                    photoOrientationBadge.textContent = currentPhotoMode === 'fill' ? 'ẢNH DỌC (FULL MÀN HÌNH)' : 'ẢNH DỌC (TOÀN BỘ)';
                     photoOrientationBadge.style.background = '#7C3AED';
                 } else {
                     photoOrientationBadge.textContent = 'ẢNH NGANG (LANDSCAPE)';
@@ -1511,6 +1507,9 @@
             let rotLabel = `Xoay: ${currentPhotoRotation}°`;
             if (exifCorrection > 0) {
                 rotLabel += ` • Tự căn EXIF +${exifCorrection}°`;
+            }
+            if (currentPhotoMode === 'contain') {
+                rotLabel += ' • Chế độ: Toàn bộ';
             }
             if (photoRotationText) {
                 photoRotationText.textContent = rotLabel;
@@ -1531,6 +1530,7 @@
             // 2. Setup Image with orientation auto-detection
             activePhotoData = data;
             currentPhotoRotation = data.rotation || 0;
+            currentPhotoMode = data.mode || 'fill';
 
             photoImg.onload = function() {
                 applyPhotoTransform();
@@ -1569,6 +1569,9 @@
             currentPhotoScale = data.scale || 1;
             currentPhotoX = data.x || 0;
             currentPhotoY = data.y || 0;
+            if (data.mode) {
+                currentPhotoMode = data.mode;
+            }
             applyPhotoTransform();
         }
 
