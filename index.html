@@ -1793,7 +1793,7 @@
 
                 // [MỚI] Xác định Video ID Youtube để tránh bị bắt nhầm vào nhánh IPTV
                 const ytId = window.extractYouTubeId(contentId) || window.extractYouTubeId(customData.videoId) || window.extractYouTubeId(customData.streamUrl);
-                const isYouTubeMedia = (ytId !== null && (contentIdLower.includes('youtube.com') || contentIdLower.includes('youtu.be')));
+                const isYouTubeMedia = ytId !== null && (contentIdLower.includes('youtube.com') || contentIdLower.includes('youtu.be') || contentId.length === 11 || (customData && customData.videoId));
                 const forceYouTube = customData.mediaType === "YOUTUBE" || customData.type === "PLAY_YOUTUBE";
 
                 // Case A: Local Photo
