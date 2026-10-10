@@ -2,13 +2,13 @@
 <html lang="vi">
 <!--
   ===================================================================================
- 
+
   ===================================================================================
 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube, TV & Phản Chiếu Media Receiver</title>
+    <title>Chiếu YouTube, IPTV & Phản Chiếu Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -401,7 +401,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE - TV & MEDIA
+            CHIẾU YOUTUBE - TRUYỀN HÌNH & MEDIA
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -451,6 +451,7 @@
             <div class="photo-info">
                 <span id="photo-title" class="photo-name">Ảnh điện thoại</span>
                 <span id="photo-counter" class="photo-badge">1 / 1</span>
+                <span id="photo-orientation-badge" class="photo-badge" style="background:#7C3AED; display:none;">ẢNH DỌC</span>
             </div>
             <div class="photo-right">
                 <span class="photo-watermark">PHẢN CHIẾU ĐIỆN THOẠI</span>
@@ -484,6 +485,7 @@
         const photoTitle = document.getElementById('photo-title');
         const photoCounter = document.getElementById('photo-counter');
         const photoRotationText = document.getElementById('photo-rotation-text');
+        const photoOrientationBadge = document.getElementById('photo-orientation-badge');
 
         const viewerOverlay = document.getElementById('viewer-overlay');
         const rewardOverlay = document.getElementById('reward-overlay');
@@ -1263,7 +1265,11 @@
 
             let success = false;
 
-            if (urlLower.includes('.flv') || manifestType === 'flv') {
+            if (manifestType === 'mp4' || urlLower.includes('.mp4') || urlLower.includes('.mov') || urlLower.includes('.webm') || rawUrl.includes(':8989')) {
+                log('Executing Direct MP4 / Local Video pipeline...');
+                success = await playWithNativeVideo(rawUrl, channelData);
+            }
+            else if (urlLower.includes('.flv') || manifestType === 'flv') {
                 log('Executing FLV playback pipeline...');
                 success = await playWithMpegts(rawUrl, channelData);
                 if (!success) {
@@ -1440,10 +1446,79 @@
         }
 
         // =========================================================================
-        // 4. LOCAL PHOTO MIRRORING LAYER
         // =========================================================================
+        // 4. LOCAL PHOTO MIRRORING LAYER (TỰ ĐỘNG NHẬN DIỆN DỌC/NGANG & CĂN CHỈNH)
+        // =========================================================================
+        let activePhotoData = null;
+        let currentPhotoScale = 1;
+        let currentPhotoX = 0;
+        let currentPhotoY = 0;
+
+        function applyPhotoTransform() {
+            if (!activePhotoData) return;
+            const naturalW = photoImg.naturalWidth || activePhotoData.width || 0;
+            const naturalH = photoImg.naturalHeight || activePhotoData.height || 0;
+
+            // Kiểm tra xem trình duyệt tivi đã tự động nhận diện dọc/ngang hay chưa
+            const browserIsPortrait = naturalH > naturalW;
+            const appIsPortrait = activePhotoData.isPortrait === true;
+
+            // Nếu ảnh thực tế chụp dọc (appIsPortrait = true) nhưng trình duyệt tivi nạp khung ngang (naturalW > naturalH),
+            // tức ảnh đang bị xoay ngang trên TV -> tự động bù góc xoay EXIF (thường 90° hoặc 270°)
+            let exifCorrection = 0;
+            if (appIsPortrait && !browserIsPortrait && activePhotoData.rotationDegrees) {
+                exifCorrection = activePhotoData.rotationDegrees;
+            }
+
+            const totalRotation = (currentPhotoRotation + exifCorrection) % 360;
+            photoImg.style.transform = `translate(${currentPhotoX}px, ${currentPhotoY}px) scale(${currentPhotoScale}) rotate(${totalRotation}deg)`;
+
+            // Nếu là ảnh dọc (effectivePortrait = true) trên TV màn hình ngang,
+            // hiển thị full màn hình TV theo chiều cao (height: 100vh, width: auto) để KHÔNG có dải đen 2 bên (không co giãn/bóp méo).
+            // Các chi tiết ảnh bị khuất có thể pan/zoom trực tiếp từ điện thoại.
+            if (effectivePortrait) {
+                photoImg.style.width = 'auto';
+                photoImg.style.height = '100vh';
+                photoImg.style.maxWidth = 'none';
+                photoImg.style.maxHeight = 'none';
+                photoImg.style.objectFit = 'cover';
+            } else {
+                if (totalRotation % 180 !== 0) {
+                    photoImg.style.maxWidth = '96vh';
+                    photoImg.style.maxHeight = '96vw';
+                } else {
+                    photoImg.style.maxWidth = '100vw';
+                    photoImg.style.maxHeight = '100vh';
+                }
+                photoImg.style.width = '';
+                photoImg.style.height = '';
+                photoImg.style.objectFit = 'contain';
+            }
+
+            // Hiển thị nhãn nhận diện trên OSD banner
+            const effectivePortrait = (totalRotation % 180 !== 0) ? !appIsPortrait : appIsPortrait;
+            if (photoOrientationBadge) {
+                photoOrientationBadge.style.display = 'inline-block';
+                if (effectivePortrait) {
+                    photoOrientationBadge.textContent = 'ẢNH DỌC (PORTRAIT)';
+                    photoOrientationBadge.style.background = '#7C3AED';
+                } else {
+                    photoOrientationBadge.textContent = 'ẢNH NGANG (LANDSCAPE)';
+                    photoOrientationBadge.style.background = '#2563EB';
+                }
+            }
+
+            let rotLabel = `Xoay: ${currentPhotoRotation}°`;
+            if (exifCorrection > 0) {
+                rotLabel += ` • Tự căn EXIF +${exifCorrection}°`;
+            }
+            if (photoRotationText) {
+                photoRotationText.textContent = rotLabel;
+            }
+        }
+
         function showPhoto(data) {
-            log('Showing local photo from phone: ' + JSON.stringify(data));
+            log('Showing local photo from phone with auto orientation: ' + JSON.stringify(data));
             // 1. Hide YouTube, IPTV & Splash
             stopIptv();
             if (splashScreen) splashScreen.style.display = 'none';
@@ -1453,10 +1528,15 @@
             ytPlayerContainer.style.display = 'none';
             currentMode = "PHOTO";
 
-            // 2. Setup Image
+            // 2. Setup Image with orientation auto-detection
+            activePhotoData = data;
             currentPhotoRotation = data.rotation || 0;
-            photoImg.style.transform = `rotate(${currentPhotoRotation}deg)`;
+
+            photoImg.onload = function() {
+                applyPhotoTransform();
+            };
             photoImg.src = data.photoUrl || "";
+            applyPhotoTransform();
 
             photoTitle.textContent = data.title || "Ảnh điện thoại";
             if (data.index && data.totalCount) {
@@ -1465,7 +1545,6 @@
             } else {
                 photoCounter.style.display = 'none';
             }
-            photoRotationText.textContent = `Xoay: ${currentPhotoRotation}°`;
 
             photoContainer.style.display = 'flex';
             photoBanner.classList.add('visible');
@@ -1478,8 +1557,7 @@
 
         function rotatePhoto(rotation) {
             currentPhotoRotation = rotation;
-            photoImg.style.transform = `rotate(${currentPhotoRotation}deg)`;
-            photoRotationText.textContent = `Xoay: ${currentPhotoRotation}°`;
+            applyPhotoTransform();
             photoBanner.classList.add('visible');
             if (photoBannerTimer) clearTimeout(photoBannerTimer);
             photoBannerTimer = setTimeout(() => {
@@ -1487,10 +1565,18 @@
             }, 3000);
         }
 
+        function zoomPanPhoto(data) {
+            currentPhotoScale = data.scale || 1;
+            currentPhotoX = data.x || 0;
+            currentPhotoY = data.y || 0;
+            applyPhotoTransform();
+        }
+
         function stopPhoto() {
             photoContainer.style.display = 'none';
             photoBanner.classList.remove('visible');
             photoImg.removeAttribute('src');
+            activePhotoData = null;
             if (currentMode === "PHOTO") {
                 currentMode = "IDLE";
                 if (splashScreen) splashScreen.style.display = 'flex';
@@ -1498,18 +1584,90 @@
         }
 
         // =========================================================================
-        // 5. LOCAL VIDEO PLAYBACK
+        // 5. LOCAL VIDEO PLAYBACK (TỰ ĐỘNG NHẬN DIỆN VIDEO DỌC/NGANG & CĂN CHỈNH)
         // =========================================================================
+        let activeVideoData = null;
+        let currentVideoRotation = 0;
+
+        function applyVideoOrientation() {
+            if (!activeVideoData || currentMode !== "IPTV") return;
+            const vidW = iptvVideo.videoWidth || activeVideoData.width || 0;
+            const vidH = iptvVideo.videoHeight || activeVideoData.height || 0;
+
+            // Kiểm tra xem bộ giải mã video của TV đã tự xoay dọc hay đang xuất luồng ngang
+            const decoderIsPortrait = vidH > vidW;
+            const appIsPortrait = activeVideoData.isPortrait === true;
+
+            // Nếu video quay dọc trên điện thoại nhưng bộ giải mã TV xuất ra khung ngang (bị nằm nghiêng),
+            // tự động áp dụng góc xoay bù từ metadata video (90° hoặc 270°)
+            let metadataCorrection = 0;
+            if (appIsPortrait && !decoderIsPortrait) {
+                metadataCorrection = activeVideoData.rotationDegrees || 90;
+            }
+
+            const totalRot = (currentVideoRotation + metadataCorrection) % 360;
+            log(`applyVideoOrientation: vidW=${vidW}, vidH=${vidH}, appIsPortrait=${appIsPortrait}, decoderIsPortrait=${decoderIsPortrait}, metadataCorrection=${metadataCorrection}, totalRot=${totalRot}`);
+
+            if (totalRot === 90 || totalRot === 270) {
+                // Video dọc xoay 90 hoặc 270 độ: Căn giữa màn hình 16:9 với chiều cao 100vw và chiều rộng 100vh
+                iptvVideo.style.position = 'absolute';
+                iptvVideo.style.top = '50%';
+                iptvVideo.style.left = '50%';
+                iptvVideo.style.width = '100vh';
+                iptvVideo.style.height = '100vw';
+                iptvVideo.style.transform = `translate(-50%, -50%) rotate(${totalRot}deg)`;
+                iptvVideo.style.objectFit = 'contain';
+            } else if (totalRot === 180) {
+                iptvVideo.style.position = 'absolute';
+                iptvVideo.style.top = '0';
+                iptvVideo.style.left = '0';
+                iptvVideo.style.width = '100%';
+                iptvVideo.style.height = '100%';
+                iptvVideo.style.transform = 'rotate(180deg)';
+                iptvVideo.style.objectFit = 'contain';
+            } else {
+                // 0 độ: Video ngang hoặc đã được TV tự xoay chuẩn
+                iptvVideo.style.position = 'absolute';
+                iptvVideo.style.top = '0';
+                iptvVideo.style.left = '0';
+                iptvVideo.style.width = '100%';
+                iptvVideo.style.height = '100%';
+                iptvVideo.style.transform = 'none';
+                iptvVideo.style.objectFit = 'contain';
+            }
+        }
+
         async function playLocalVideo(data) {
-            log('Playing local video from phone: ' + JSON.stringify(data));
+            log('Playing local video from phone with auto orientation: ' + JSON.stringify(data));
             stopPhoto();
+            activeVideoData = data;
+            currentVideoRotation = data.rotation || 0;
+
+            const isPortrait = data.isPortrait === true;
+            const orientationTag = isPortrait ? "📱 Video Dọc (Tự căn chỉnh)" : "📺 Video Ngang (16:9)";
+
             const channelData = {
                 streamUrl: data.videoUrl,
                 channelName: data.title || "Video điện thoại",
-                groupTitle: "Phản chiếu điện thoại",
+                groupTitle: "Phản chiếu điện thoại • " + orientationTag,
                 manifestType: "mp4"
             };
+
             await playIptvChannel(channelData);
+
+            iptvVideo.onloadedmetadata = function() {
+                log(`iptvVideo loadedmetadata: ${iptvVideo.videoWidth}x${iptvVideo.videoHeight}, isPortrait=${data.isPortrait}`);
+                applyVideoOrientation();
+            };
+            applyVideoOrientation();
+        }
+
+        function rotateLocalVideo(rotation) {
+            currentVideoRotation = rotation;
+            applyVideoOrientation();
+            if (activeChannelData) {
+                showIptvBanner(activeChannelData);
+            }
         }
 
         // =========================================================================
@@ -1717,6 +1875,8 @@
                 if (data.media) {
                     loadVideoFromMessage(data.media);
                 }
+            } else if (data.type === "ZOOM_PAN_PHOTO") {
+                zoomPanPhoto(data);
             } else if (data.type === "REWARD_NOTIFICATION_STATUS") {
                 window.rewardNotificationEnabled = data.enabled;
             }
