@@ -2,13 +2,13 @@
 <html lang="vi">
 <!--
   ===================================================================================
-
+  
   ===================================================================================
 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube, IPTV & Phản Chiếu Media Receiver</title>
+    <title>Chiếu YouTube, IPTV  & Phản Chiếu Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -401,7 +401,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE & TRUYỀN HÌNH & MEDIA
+            CHIẾU YOUTUBE  - TRUYỀN HÌNH & MEDIA
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -1161,7 +1161,7 @@
                         resolved = true;
                         cleanupListeners();
                         activeEngine = "NATIVE";
-                        log('Native HTML5 video playback started successfully');
+                        log('Native HTML5 video playback started successfully: ' + streamUrl);
                         hideIptvLoading();
                         showIptvBanner(channelData);
                         notifyIptvStarted(channelData);
@@ -1172,19 +1172,31 @@
                     if (!resolved) {
                         resolved = true;
                         cleanupListeners();
-                        log('Native video element error');
+                        const err = iptvVideo.error;
+                        const errMsg = err ? `code=${err.code}, message=${err.message}` : 'Unknown';
+                        log('Native video element error: ' + errMsg);
                         resolve(false);
+                    }
+                };
+                const onTimeUpdate = () => {
+                    if (iptvVideo.currentTime > 0) {
+                        onPlaying();
                     }
                 };
                 function cleanupListeners() {
                     iptvVideo.removeEventListener('playing', onPlaying);
                     iptvVideo.removeEventListener('canplay', onPlaying);
+                    iptvVideo.removeEventListener('loadeddata', onPlaying);
+                    iptvVideo.removeEventListener('timeupdate', onTimeUpdate);
                     iptvVideo.removeEventListener('error', onError);
                 }
                 iptvVideo.addEventListener('playing', onPlaying);
                 iptvVideo.addEventListener('canplay', onPlaying);
+                iptvVideo.addEventListener('loadeddata', onPlaying);
+                iptvVideo.addEventListener('timeupdate', onTimeUpdate);
                 iptvVideo.addEventListener('error', onError);
 
+                iptvVideo.preload = "auto";
                 iptvVideo.src = streamUrl;
                 iptvVideo.muted = false;
                 iptvVideo.volume = 1.0;
@@ -1194,7 +1206,7 @@
                     playPromise.then(() => {
                         onPlaying();
                     }).catch(err => {
-                        log('Native play promise error: ' + err.message);
+                        log('Native play promise error: ' + err.message + ', trying muted fallback...');
                         iptvVideo.muted = true;
                         iptvVideo.play().then(() => {
                             setTimeout(() => { iptvVideo.muted = false; }, 300);
@@ -1205,15 +1217,16 @@
 
                 setTimeout(() => {
                     if (!resolved) {
-                        if (!iptvVideo.paused && iptvVideo.currentTime > 0) {
+                        if (!iptvVideo.paused || iptvVideo.currentTime > 0 || iptvVideo.readyState >= 2) {
                             onPlaying();
                         } else {
                             resolved = true;
                             cleanupListeners();
+                            log('Native video playback timed out after 20s');
                             resolve(false);
                         }
                     }
-                }, 6000);
+                }, 20000);
             });
         }
 
@@ -1656,12 +1669,13 @@
                 manifestType: "mp4"
             };
 
-            await playIptvChannel(channelData);
-
             iptvVideo.onloadedmetadata = function() {
                 log(`iptvVideo loadedmetadata: ${iptvVideo.videoWidth}x${iptvVideo.videoHeight}, isPortrait=${data.isPortrait}`);
                 applyVideoOrientation();
             };
+            applyVideoOrientation();
+
+            await playIptvChannel(channelData);
             applyVideoOrientation();
         }
 
@@ -1870,10 +1884,27 @@
                 showPhoto(data);
             } else if (data.type === "ROTATE_PHOTO") {
                 rotatePhoto(data.rotation || 0);
+            } else if (data.type === "ROTATE_VIDEO") {
+                rotateLocalVideo(data.rotation || 0);
             } else if (data.type === "STOP_PHOTO") {
                 stopPhoto();
+            } else if (data.type === "STOP_LOCAL_VIDEO") {
+                stopIptv();
+                stopPhoto();
+                if (splashScreen) splashScreen.style.display = 'flex';
             } else if (data.type === "PLAY_LOCAL_VIDEO") {
                 playLocalVideo(data);
+            } else if (data.type === "TOGGLE_LOCAL_VIDEO" || data.type === "PLAY_PAUSE_LOCAL_VIDEO") {
+                if (iptvVideo.paused) {
+                    iptvVideo.play().catch(e => log('Resume local video error: ' + e.message));
+                } else {
+                    iptvVideo.pause();
+                }
+            } else if (data.type === "SEEK_LOCAL_VIDEO") {
+                const targetSec = data.positionSec || (data.positionMs ? data.positionMs / 1000.0 : 0);
+                if (typeof targetSec === 'number' && !isNaN(targetSec)) {
+                    iptvVideo.currentTime = targetSec;
+                }
             } else if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
                 if (data.media) {
                     loadVideoFromMessage(data.media);
