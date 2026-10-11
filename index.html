@@ -2,13 +2,13 @@
 <html lang="vi">
 <!--
   ===================================================================================
-  
+
   ===================================================================================
 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube, IPTV  & Phản Chiếu Media Receiver</title>
+    <title>Chiếu YouTube Karaoke, IPTV 360TV & Phản Chiếu Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -401,7 +401,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE  - TRUYỀN HÌNH & MEDIA
+            CHIẾU YOUTUBE KARAOKE & TRUYỀN HÌNH IPTV 360TV
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -413,7 +413,7 @@
 
     <!-- 2. IPTV & Video Container -->
     <div id="iptv-container">
-        <video id="iptv-player" playsinline autoplay></video>
+        <video id="iptv-player" crossorigin="anonymous" playsinline autoplay preload="auto"></video>
         <!-- IPTV Loading Spinner -->
         <div id="iptv-loading">
             <div class="spinner"></div>
@@ -642,6 +642,7 @@
                 }
                 iptvVideo.load();
             } catch (e) {}
+            iptvVideo.crossOrigin = "anonymous";
             iptvVideo.muted = false;
             iptvVideo.volume = 1.0;
         }
@@ -1173,8 +1174,18 @@
                         resolved = true;
                         cleanupListeners();
                         const err = iptvVideo.error;
-                        const errMsg = err ? `code=${err.code}, message=${err.message}` : 'Unknown';
+                        let errText = "Không rõ";
+                        if (err) {
+                            switch (err.code) {
+                                case 1: errText = "Bị hủy bởi người dùng (MEDIA_ERR_ABORTED)"; break;
+                                case 2: errText = "Lỗi kết nối mạng LAN (MEDIA_ERR_NETWORK)"; break;
+                                case 3: errText = "Lỗi giải mã codec (MEDIA_ERR_DECODE - Có thể do video HEVC/H.265)"; break;
+                                case 4: errText = "Định dạng video không được TV hỗ trợ (MEDIA_ERR_SRC_NOT_SUPPORTED)"; break;
+                            }
+                        }
+                        const errMsg = err ? `code=${err.code} (${errText}), message=${err.message || ''}` : 'Unknown';
                         log('Native video element error: ' + errMsg);
+                        notifyIptvError("Lỗi phát video trên TV: " + errText);
                         resolve(false);
                     }
                 };
@@ -1196,6 +1207,7 @@
                 iptvVideo.addEventListener('timeupdate', onTimeUpdate);
                 iptvVideo.addEventListener('error', onError);
 
+                iptvVideo.crossOrigin = "anonymous";
                 iptvVideo.preload = "auto";
                 iptvVideo.src = streamUrl;
                 iptvVideo.muted = false;
@@ -1669,8 +1681,12 @@
                 manifestType: "mp4"
             };
 
+            iptvVideo.crossOrigin = "anonymous";
             iptvVideo.onloadedmetadata = function() {
                 log(`iptvVideo loadedmetadata: ${iptvVideo.videoWidth}x${iptvVideo.videoHeight}, isPortrait=${data.isPortrait}`);
+                applyVideoOrientation();
+            };
+            iptvVideo.oncanplay = function() {
                 applyVideoOrientation();
             };
             applyVideoOrientation();
