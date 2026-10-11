@@ -8,7 +8,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube, TV & Phản Chiếu Media Receiver</title>
+    <title>Chiếu YouTube Karaoke, IPTV 360TV & Phản Chiếu Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -149,67 +149,6 @@
         .photo-subtext {
             color: #9CA3AF;
             font-size: 12px;
-        }
-
-        /* --- Dedicated Local Video Container --- */
-        #local-video-container {
-            width: 100vw;
-            height: 100vh;
-            position: absolute;
-            top: 0;
-            left: 0;
-            background: #000000;
-            z-index: 8;
-            display: none;
-            overflow: hidden;
-        }
-
-        #local-video-player {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            background: #000000;
-        }
-
-        #local-video-loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            gap: 16px;
-            z-index: 30;
-            background: rgba(0, 0, 0, 0.85);
-            padding: 24px 36px;
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-        }
-
-        #local-video-banner {
-            position: absolute;
-            top: 32px;
-            left: 36px;
-            right: 36px;
-            background: linear-gradient(135deg, rgba(17, 17, 26, 0.94), rgba(28, 27, 34, 0.92));
-            border: 1.5px solid rgba(208, 188, 255, 0.35);
-            border-radius: 18px;
-            padding: 14px 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.88);
-            z-index: 50;
-            opacity: 0;
-            transform: translateY(-20px);
-            transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            pointer-events: none;
-        }
-
-        #local-video-banner.visible {
-            opacity: 1;
-            transform: translateY(0);
         }
 
         /* --- Karaoke Overlay Elements --- */
@@ -462,7 +401,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE - TRUYỀN HÌNH & MEDIA
+            CHIẾU YOUTUBE KARAOKE & TRUYỀN HÌNH IPTV 360TV
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -512,32 +451,10 @@
             <div class="photo-info">
                 <span id="photo-title" class="photo-name">Ảnh điện thoại</span>
                 <span id="photo-counter" class="photo-badge">1 / 1</span>
-                <span id="photo-orientation-badge" class="photo-badge" style="background:#7C3AED; display:none;">ẢNH DỌC</span>
             </div>
             <div class="photo-right">
                 <span class="photo-watermark">PHẢN CHIẾU ĐIỆN THOẠI</span>
                 <span id="photo-rotation-text" class="photo-subtext">Xoay: 0°</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- 4. Local Video Mirroring Container (Tương tự iptv-player, độc lập với IPTV) -->
-    <div id="local-video-container">
-        <video id="local-video-player" playsinline autoplay></video>
-        <!-- Loading Spinner cho Video Cục Bộ -->
-        <div id="local-video-loading">
-            <div class="spinner"></div>
-            <span style="color: #fff; font-size: 16px; font-weight: bold;" id="local-video-loading-text">Đang tải video điện thoại...</span>
-        </div>
-        <!-- Local Video OSD Banner -->
-        <div id="local-video-banner">
-            <div class="photo-info">
-                <span id="local-video-title" class="photo-name">Video điện thoại</span>
-                <span id="local-video-orientation-badge" class="photo-badge" style="background:#7C3AED;">VIDEO</span>
-            </div>
-            <div class="photo-right">
-                <span class="photo-watermark">PHẢN CHIẾU VIDEO LAN</span>
-                <span id="local-video-rotation-text" class="photo-subtext">Xoay: 0°</span>
             </div>
         </div>
     </div>
@@ -567,20 +484,6 @@
         const photoTitle = document.getElementById('photo-title');
         const photoCounter = document.getElementById('photo-counter');
         const photoRotationText = document.getElementById('photo-rotation-text');
-        const photoOrientationBadge = document.getElementById('photo-orientation-badge');
-
-        const localVideoContainer = document.getElementById('local-video-container');
-        const localVideoPlayer = document.getElementById('local-video-player');
-        const localVideoLoading = document.getElementById('local-video-loading');
-        const localVideoLoadingText = document.getElementById('local-video-loading-text');
-        const localVideoBanner = document.getElementById('local-video-banner');
-        const localVideoTitle = document.getElementById('local-video-title');
-        const localVideoOrientationBadge = document.getElementById('local-video-orientation-badge');
-        const localVideoRotationText = document.getElementById('local-video-rotation-text');
-
-        let activeLocalVideoData = null;
-        let currentLocalVideoRotation = 0;
-        let localVideoBannerTimer = null;
 
         const viewerOverlay = document.getElementById('viewer-overlay');
         const rewardOverlay = document.getElementById('reward-overlay');
@@ -1256,7 +1159,7 @@
                         resolved = true;
                         cleanupListeners();
                         activeEngine = "NATIVE";
-                        log('Native HTML5 video playback started successfully: ' + streamUrl);
+                        log('Native HTML5 video playback started successfully');
                         hideIptvLoading();
                         showIptvBanner(channelData);
                         notifyIptvStarted(channelData);
@@ -1267,31 +1170,19 @@
                     if (!resolved) {
                         resolved = true;
                         cleanupListeners();
-                        const err = iptvVideo.error;
-                        const errMsg = err ? `code=${err.code}, message=${err.message}` : 'Unknown';
-                        log('Native video element error: ' + errMsg);
+                        log('Native video element error');
                         resolve(false);
-                    }
-                };
-                const onTimeUpdate = () => {
-                    if (iptvVideo.currentTime > 0) {
-                        onPlaying();
                     }
                 };
                 function cleanupListeners() {
                     iptvVideo.removeEventListener('playing', onPlaying);
                     iptvVideo.removeEventListener('canplay', onPlaying);
-                    iptvVideo.removeEventListener('loadeddata', onPlaying);
-                    iptvVideo.removeEventListener('timeupdate', onTimeUpdate);
                     iptvVideo.removeEventListener('error', onError);
                 }
                 iptvVideo.addEventListener('playing', onPlaying);
                 iptvVideo.addEventListener('canplay', onPlaying);
-                iptvVideo.addEventListener('loadeddata', onPlaying);
-                iptvVideo.addEventListener('timeupdate', onTimeUpdate);
                 iptvVideo.addEventListener('error', onError);
 
-                iptvVideo.preload = "auto";
                 iptvVideo.src = streamUrl;
                 iptvVideo.muted = false;
                 iptvVideo.volume = 1.0;
@@ -1301,7 +1192,7 @@
                     playPromise.then(() => {
                         onPlaying();
                     }).catch(err => {
-                        log('Native play promise error: ' + err.message + ', trying muted fallback...');
+                        log('Native play promise error: ' + err.message);
                         iptvVideo.muted = true;
                         iptvVideo.play().then(() => {
                             setTimeout(() => { iptvVideo.muted = false; }, 300);
@@ -1312,16 +1203,15 @@
 
                 setTimeout(() => {
                     if (!resolved) {
-                        if (!iptvVideo.paused || iptvVideo.currentTime > 0 || iptvVideo.readyState >= 2) {
+                        if (!iptvVideo.paused && iptvVideo.currentTime > 0) {
                             onPlaying();
                         } else {
                             resolved = true;
                             cleanupListeners();
-                            log('Native video playback timed out after 20s');
                             resolve(false);
                         }
                     }
-                }, 20000);
+                }, 6000);
             });
         }
 
@@ -1350,7 +1240,6 @@
             // 1. Hide Splash, YouTube & Photo Layer
             if (splashScreen) splashScreen.style.display = 'none';
             if (photoContainer) photoContainer.style.display = 'none';
-            if (typeof stopLocalVideo === 'function') stopLocalVideo();
             if (ytPlayer && isYouTubeReady) {
                 try { ytPlayer.stopVideo(); } catch (e) {}
             }
@@ -1374,11 +1263,7 @@
 
             let success = false;
 
-            if (manifestType === 'mp4' || urlLower.includes('.mp4') || urlLower.includes('.mov') || urlLower.includes('.webm')) {
-                log('Executing Direct MP4 pipeline...');
-                success = await playWithNativeVideo(rawUrl, channelData);
-            }
-            else if (urlLower.includes('.flv') || manifestType === 'flv') {
+            if (urlLower.includes('.flv') || manifestType === 'flv') {
                 log('Executing FLV playback pipeline...');
                 success = await playWithMpegts(rawUrl, channelData);
                 if (!success) {
@@ -1555,81 +1440,12 @@
         }
 
         // =========================================================================
+        // 4. LOCAL PHOTO MIRRORING LAYER
         // =========================================================================
-        // 4. LOCAL PHOTO MIRRORING LAYER (TỰ ĐỘNG NHẬN DIỆN DỌC/NGANG & CĂN CHỈNH)
-        // =========================================================================
-        let activePhotoData = null;
-        let currentPhotoScale = 1;
-        let currentPhotoX = 0;
-        let currentPhotoY = 0;
-        let currentPhotoMode = 'fill'; // 'fill' (cover, no black bars) or 'contain' (show entire photo)
-
-        function applyPhotoTransform() {
-            if (!activePhotoData) return;
-            const naturalW = photoImg.naturalWidth || activePhotoData.width || 0;
-            const naturalH = photoImg.naturalHeight || activePhotoData.height || 0;
-
-            const browserIsPortrait = naturalH > naturalW;
-            const appIsPortrait = activePhotoData.isPortrait === true;
-
-            let exifCorrection = 0;
-            if (appIsPortrait && !browserIsPortrait && activePhotoData.rotationDegrees) {
-                exifCorrection = activePhotoData.rotationDegrees;
-            }
-
-            const totalRotation = (currentPhotoRotation + exifCorrection) % 360;
-            const effectivePortrait = (totalRotation % 180 !== 0) ? !appIsPortrait : appIsPortrait;
-
-            photoImg.style.transform = `translate(${currentPhotoX}px, ${currentPhotoY}px) scale(${currentPhotoScale}) rotate(${totalRotation}deg)`;
-
-            if (effectivePortrait && currentPhotoMode === 'fill') {
-                photoImg.style.width = 'auto';
-                photoImg.style.height = '100vh';
-                photoImg.style.maxWidth = 'none';
-                photoImg.style.maxHeight = 'none';
-                photoImg.style.objectFit = 'cover';
-            } else {
-                if (totalRotation % 180 !== 0) {
-                    photoImg.style.maxWidth = '96vh';
-                    photoImg.style.maxHeight = '96vw';
-                } else {
-                    photoImg.style.maxWidth = '100vw';
-                    photoImg.style.maxHeight = '100vh';
-                }
-                photoImg.style.width = '';
-                photoImg.style.height = '';
-                photoImg.style.objectFit = 'contain';
-            }
-
-            // Hiển thị nhãn nhận diện trên OSD banner
-            if (photoOrientationBadge) {
-                photoOrientationBadge.style.display = 'inline-block';
-                if (effectivePortrait) {
-                    photoOrientationBadge.textContent = currentPhotoMode === 'fill' ? 'ẢNH DỌC (FULL MÀN HÌNH)' : 'ẢNH DỌC (TOÀN BỘ)';
-                    photoOrientationBadge.style.background = '#7C3AED';
-                } else {
-                    photoOrientationBadge.textContent = 'ẢNH NGANG (LANDSCAPE)';
-                    photoOrientationBadge.style.background = '#2563EB';
-                }
-            }
-
-            let rotLabel = `Xoay: ${currentPhotoRotation}°`;
-            if (exifCorrection > 0) {
-                rotLabel += ` • Tự căn EXIF +${exifCorrection}°`;
-            }
-            if (currentPhotoMode === 'contain') {
-                rotLabel += ' • Chế độ: Toàn bộ';
-            }
-            if (photoRotationText) {
-                photoRotationText.textContent = rotLabel;
-            }
-        }
-
         function showPhoto(data) {
-            log('Showing local photo from phone with auto orientation: ' + JSON.stringify(data));
+            log('Showing local photo from phone: ' + JSON.stringify(data));
             // 1. Hide YouTube, IPTV & Splash
             stopIptv();
-            if (typeof stopLocalVideo === 'function') stopLocalVideo();
             if (splashScreen) splashScreen.style.display = 'none';
             if (ytPlayer && isYouTubeReady) {
                 try { ytPlayer.stopVideo(); } catch (e) {}
@@ -1637,16 +1453,10 @@
             ytPlayerContainer.style.display = 'none';
             currentMode = "PHOTO";
 
-            // 2. Setup Image with orientation auto-detection
-            activePhotoData = data;
+            // 2. Setup Image
             currentPhotoRotation = data.rotation || 0;
-            currentPhotoMode = data.mode || 'fill';
-
-            photoImg.onload = function() {
-                applyPhotoTransform();
-            };
+            photoImg.style.transform = `rotate(${currentPhotoRotation}deg)`;
             photoImg.src = data.photoUrl || "";
-            applyPhotoTransform();
 
             photoTitle.textContent = data.title || "Ảnh điện thoại";
             if (data.index && data.totalCount) {
@@ -1655,6 +1465,7 @@
             } else {
                 photoCounter.style.display = 'none';
             }
+            photoRotationText.textContent = `Xoay: ${currentPhotoRotation}°`;
 
             photoContainer.style.display = 'flex';
             photoBanner.classList.add('visible');
@@ -1667,7 +1478,8 @@
 
         function rotatePhoto(rotation) {
             currentPhotoRotation = rotation;
-            applyPhotoTransform();
+            photoImg.style.transform = `rotate(${currentPhotoRotation}deg)`;
+            photoRotationText.textContent = `Xoay: ${currentPhotoRotation}°`;
             photoBanner.classList.add('visible');
             if (photoBannerTimer) clearTimeout(photoBannerTimer);
             photoBannerTimer = setTimeout(() => {
@@ -1675,21 +1487,10 @@
             }, 3000);
         }
 
-        function zoomPanPhoto(data) {
-            currentPhotoScale = data.scale || 1;
-            currentPhotoX = data.x || 0;
-            currentPhotoY = data.y || 0;
-            if (data.mode) {
-                currentPhotoMode = data.mode;
-            }
-            applyPhotoTransform();
-        }
-
         function stopPhoto() {
             photoContainer.style.display = 'none';
             photoBanner.classList.remove('visible');
             photoImg.removeAttribute('src');
-            activePhotoData = null;
             if (currentMode === "PHOTO") {
                 currentMode = "IDLE";
                 if (splashScreen) splashScreen.style.display = 'flex';
@@ -1697,190 +1498,18 @@
         }
 
         // =========================================================================
-        // 5. DEDICATED LOCAL VIDEO PLAYBACK (HOÀN TOÀN TÁCH BIỆT KHỎI IPTV)
+        // 5. LOCAL VIDEO PLAYBACK
         // =========================================================================
-        function applyLocalVideoOrientation() {
-            if (!activeLocalVideoData || currentMode !== "LOCAL_VIDEO") return;
-            const vidW = localVideoPlayer.videoWidth || activeLocalVideoData.width || 0;
-            const vidH = localVideoPlayer.videoHeight || activeLocalVideoData.height || 0;
-
-            const decoderIsPortrait = vidH > vidW;
-            const appIsPortrait = activeLocalVideoData.isPortrait === true;
-
-            let metadataCorrection = 0;
-            if (appIsPortrait && !decoderIsPortrait) {
-                metadataCorrection = activeLocalVideoData.rotationDegrees || 90;
-            }
-
-            const totalRot = ((currentLocalVideoRotation || 0) + metadataCorrection) % 360;
-            log(`applyLocalVideoOrientation: vidW=${vidW}, vidH=${vidH}, appIsPortrait=${appIsPortrait}, decoderIsPortrait=${decoderIsPortrait}, metadataCorrection=${metadataCorrection}, totalRot=${totalRot}`);
-
-            if (totalRot === 90 || totalRot === 270) {
-                localVideoPlayer.style.position = 'absolute';
-                localVideoPlayer.style.top = '50%';
-                localVideoPlayer.style.left = '50%';
-                localVideoPlayer.style.width = '100vh';
-                localVideoPlayer.style.height = '100vw';
-                localVideoPlayer.style.transform = `translate(-50%, -50%) rotate(${totalRot}deg)`;
-                localVideoPlayer.style.objectFit = 'contain';
-            } else if (totalRot === 180) {
-                localVideoPlayer.style.position = 'absolute';
-                localVideoPlayer.style.top = '0';
-                localVideoPlayer.style.left = '0';
-                localVideoPlayer.style.width = '100%';
-                localVideoPlayer.style.height = '100%';
-                localVideoPlayer.style.transform = 'rotate(180deg)';
-                localVideoPlayer.style.objectFit = 'contain';
-            } else {
-                localVideoPlayer.style.position = 'absolute';
-                localVideoPlayer.style.top = '0';
-                localVideoPlayer.style.left = '0';
-                localVideoPlayer.style.width = '100%';
-                localVideoPlayer.style.height = '100%';
-                localVideoPlayer.style.transform = 'none';
-                localVideoPlayer.style.objectFit = 'contain';
-            }
-
-            if (localVideoRotationText) {
-                let rotLabel = `Xoay: ${currentLocalVideoRotation}°`;
-                if (metadataCorrection > 0) rotLabel += ` • Tự căn +${metadataCorrection}°`;
-                localVideoRotationText.textContent = rotLabel;
-            }
-        }
-
         async function playLocalVideo(data) {
-            log('Starting dedicated local video playback: ' + JSON.stringify(data));
-            // 1. Tắt các chế độ khác sạch sẽ
-            stopIptv();
+            log('Playing local video from phone: ' + JSON.stringify(data));
             stopPhoto();
-            if (ytPlayer && isYouTubeReady) {
-                try { ytPlayer.stopVideo(); } catch (e) {}
-            }
-            if (ytPlayerContainer) ytPlayerContainer.style.display = 'none';
-            if (splashScreen) splashScreen.style.display = 'none';
-
-            currentMode = "LOCAL_VIDEO";
-            activeLocalVideoData = data;
-            currentLocalVideoRotation = data.rotation || 0;
-
-            // 2. Thiết lập giao diện Local Video Container
-            if (localVideoContainer) localVideoContainer.style.display = 'block';
-            if (localVideoLoading) localVideoLoading.style.display = 'flex';
-            if (localVideoLoadingText) {
-                localVideoLoadingText.textContent = 'Đang kết nối: ' + (data.title || 'Video điện thoại') + '...';
-            }
-            if (localVideoTitle) localVideoTitle.textContent = data.title || 'Video điện thoại';
-            if (localVideoOrientationBadge) {
-                localVideoOrientationBadge.textContent = data.isPortrait ? '📱 VIDEO DỌC' : '📺 VIDEO NGANG';
-            }
-
-            // 3. Reset video element và gán các sự kiện
-            try {
-                localVideoPlayer.pause();
-                localVideoPlayer.removeAttribute('src');
-                localVideoPlayer.load();
-            } catch (e) {}
-
-            localVideoPlayer.muted = false;
-            localVideoPlayer.volume = 1.0;
-            localVideoPlayer.preload = 'auto';
-
-            let resolvedPlay = false;
-            const onPlaySuccess = () => {
-                if (resolvedPlay) return;
-                resolvedPlay = true;
-                log('Local video started playing successfully');
-                if (localVideoLoading) localVideoLoading.style.display = 'none';
-                if (localVideoBanner) {
-                    localVideoBanner.classList.add('visible');
-                    if (localVideoBannerTimer) clearTimeout(localVideoBannerTimer);
-                    localVideoBannerTimer = setTimeout(() => {
-                        localVideoBanner.classList.remove('visible');
-                    }, 4500);
-                }
-                applyLocalVideoOrientation();
+            const channelData = {
+                streamUrl: data.videoUrl,
+                channelName: data.title || "Video điện thoại",
+                groupTitle: "Phản chiếu điện thoại",
+                manifestType: "mp4"
             };
-
-            localVideoPlayer.onloadedmetadata = () => {
-                log(`Local video metadata: ${localVideoPlayer.videoWidth}x${localVideoPlayer.videoHeight}`);
-                applyLocalVideoOrientation();
-            };
-            localVideoPlayer.onplaying = onPlaySuccess;
-            localVideoPlayer.oncanplay = () => {
-                if (!localVideoPlayer.paused) onPlaySuccess();
-            };
-            localVideoPlayer.ontimeupdate = () => {
-                if (localVideoPlayer.currentTime > 0) onPlaySuccess();
-            };
-            localVideoPlayer.onerror = () => {
-                const err = localVideoPlayer.error;
-                log(`Local video error: code=${err ? err.code : 'unknown'}, msg=${err ? err.message : ''}`);
-                if (localVideoLoading) localVideoLoading.style.display = 'none';
-                context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, {
-                    type: "LOCAL_VIDEO_ERROR",
-                    message: "Lỗi phát video trên TV (mã " + (err ? err.code : 0) + ")"
-                });
-            };
-
-            localVideoPlayer.src = data.videoUrl;
-            try { localVideoPlayer.load(); } catch (e) {}
-            applyLocalVideoOrientation();
-
-            const p = localVideoPlayer.play();
-            if (p !== undefined) {
-                p.then(() => {
-                    onPlaySuccess();
-                }).catch(err => {
-                    log('Local video play catch: ' + err.message + ', trying muted fallback');
-                    localVideoPlayer.muted = true;
-                    localVideoPlayer.play().then(() => {
-                        setTimeout(() => { localVideoPlayer.muted = false; }, 300);
-                        onPlaySuccess();
-                    }).catch(e2 => {
-                        log('Local video muted fallback failed: ' + e2.message);
-                    });
-                });
-            }
-        }
-
-        function stopLocalVideo() {
-            if (localVideoPlayer) {
-                try {
-                    localVideoPlayer.pause();
-                    localVideoPlayer.removeAttribute('src');
-                    localVideoPlayer.load();
-                } catch (e) {}
-            }
-            if (localVideoContainer) localVideoContainer.style.display = 'none';
-            if (localVideoLoading) localVideoLoading.style.display = 'none';
-            if (localVideoBanner) localVideoBanner.classList.remove('visible');
-            if (localVideoBannerTimer) clearTimeout(localVideoBannerTimer);
-            activeLocalVideoData = null;
-            if (currentMode === "LOCAL_VIDEO") {
-                currentMode = "IDLE";
-                if (splashScreen) splashScreen.style.display = 'flex';
-            }
-        }
-
-        function rotateLocalVideo(rotation) {
-            currentLocalVideoRotation = rotation;
-            applyLocalVideoOrientation();
-        }
-
-        function toggleLocalVideo() {
-            if (localVideoPlayer) {
-                if (localVideoPlayer.paused) {
-                    localVideoPlayer.play().catch(e => log('Local video resume error: ' + e.message));
-                } else {
-                    localVideoPlayer.pause();
-                }
-            }
-        }
-
-        function seekLocalVideo(positionSec) {
-            if (localVideoPlayer && typeof positionSec === 'number' && !isNaN(positionSec)) {
-                localVideoPlayer.currentTime = positionSec;
-            }
+            await playIptvChannel(channelData);
         }
 
         // =========================================================================
@@ -2012,7 +1641,6 @@
             log('Loading YouTube video from message: ' + JSON.stringify(media));
             stopIptv();
             stopPhoto();
-            if (typeof stopLocalVideo === 'function') stopLocalVideo();
             currentMode = "YOUTUBE";
 
             ytPlayerContainer.style.display = 'block';
@@ -2081,25 +1709,14 @@
                 showPhoto(data);
             } else if (data.type === "ROTATE_PHOTO") {
                 rotatePhoto(data.rotation || 0);
-            } else if (data.type === "ROTATE_VIDEO") {
-                rotateLocalVideo(data.rotation || 0);
             } else if (data.type === "STOP_PHOTO") {
                 stopPhoto();
-            } else if (data.type === "STOP_LOCAL_VIDEO") {
-                stopLocalVideo();
             } else if (data.type === "PLAY_LOCAL_VIDEO") {
                 playLocalVideo(data);
-            } else if (data.type === "TOGGLE_LOCAL_VIDEO" || data.type === "PLAY_PAUSE_LOCAL_VIDEO") {
-                toggleLocalVideo();
-            } else if (data.type === "SEEK_LOCAL_VIDEO") {
-                const targetSec = data.positionSec || (data.positionMs ? data.positionMs / 1000.0 : 0);
-                seekLocalVideo(targetSec);
             } else if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
                 if (data.media) {
                     loadVideoFromMessage(data.media);
                 }
-            } else if (data.type === "ZOOM_PAN_PHOTO") {
-                zoomPanPhoto(data);
             } else if (data.type === "REWARD_NOTIFICATION_STATUS") {
                 window.rewardNotificationEnabled = data.enabled;
             }
@@ -2139,9 +1756,6 @@
             }
             if (typeof stopPhoto === 'function') {
                 try { stopPhoto(); } catch (e) {}
-            }
-            if (typeof stopLocalVideo === 'function') {
-                try { stopLocalVideo(); } catch (e) {}
             }
             if (typeof hideIptvLoading === 'function') hideIptvLoading();
             if (typeof iptvBanner !== 'undefined' && iptvBanner) {
