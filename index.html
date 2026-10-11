@@ -413,7 +413,7 @@
 
     <!-- 2. IPTV & Video Container -->
     <div id="iptv-container">
-        <video id="iptv-player" crossorigin="anonymous" playsinline autoplay preload="auto"></video>
+        <video id="iptv-player" playsinline autoplay></video>
         <!-- IPTV Loading Spinner -->
         <div id="iptv-loading">
             <div class="spinner"></div>
@@ -642,7 +642,6 @@
                 }
                 iptvVideo.load();
             } catch (e) {}
-            iptvVideo.crossOrigin = "anonymous";
             iptvVideo.muted = false;
             iptvVideo.volume = 1.0;
         }
@@ -1174,18 +1173,8 @@
                         resolved = true;
                         cleanupListeners();
                         const err = iptvVideo.error;
-                        let errText = "Không rõ";
-                        if (err) {
-                            switch (err.code) {
-                                case 1: errText = "Bị hủy bởi người dùng (MEDIA_ERR_ABORTED)"; break;
-                                case 2: errText = "Lỗi kết nối mạng LAN (MEDIA_ERR_NETWORK)"; break;
-                                case 3: errText = "Lỗi giải mã codec (MEDIA_ERR_DECODE - Có thể do video HEVC/H.265)"; break;
-                                case 4: errText = "Định dạng video không được TV hỗ trợ (MEDIA_ERR_SRC_NOT_SUPPORTED)"; break;
-                            }
-                        }
-                        const errMsg = err ? `code=${err.code} (${errText}), message=${err.message || ''}` : 'Unknown';
+                        const errMsg = err ? `code=${err.code}, message=${err.message}` : 'Unknown';
                         log('Native video element error: ' + errMsg);
-                        notifyIptvError("Lỗi phát video trên TV: " + errText);
                         resolve(false);
                     }
                 };
@@ -1207,7 +1196,6 @@
                 iptvVideo.addEventListener('timeupdate', onTimeUpdate);
                 iptvVideo.addEventListener('error', onError);
 
-                iptvVideo.crossOrigin = "anonymous";
                 iptvVideo.preload = "auto";
                 iptvVideo.src = streamUrl;
                 iptvVideo.muted = false;
@@ -1681,12 +1669,8 @@
                 manifestType: "mp4"
             };
 
-            iptvVideo.crossOrigin = "anonymous";
             iptvVideo.onloadedmetadata = function() {
                 log(`iptvVideo loadedmetadata: ${iptvVideo.videoWidth}x${iptvVideo.videoHeight}, isPortrait=${data.isPortrait}`);
-                applyVideoOrientation();
-            };
-            iptvVideo.oncanplay = function() {
                 applyVideoOrientation();
             };
             applyVideoOrientation();
