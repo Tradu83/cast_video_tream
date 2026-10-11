@@ -2,12 +2,13 @@
 <html lang="vi">
 <!--
   ===================================================================================
-   ===================================================================================
+
+  ===================================================================================
 -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chiếu YouTube Karaoke, IPTV 360TV & Phản Chiếu Media Receiver</title>
+    <title>Chiếu YouTube, TV & Phản Chiếu Media Receiver</title>
     <!-- 1. Mux.js: Transmuxer for MPEG-2 TS into ISO-BMFF (Required for HLS TS segments) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mux.js/6.0.1/mux.min.js"></script>
     <!-- 2. Shaka Player: Google Open Source MSE/EME DASH & HLS Player with ClearKey DRM support -->
@@ -461,7 +462,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE KARAOKE & TRUYỀN HÌNH IPTV 360TV
+            CHIẾU YOUTUBE - TRUYỀN HÌNH & MEDIA
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -520,9 +521,9 @@
         </div>
     </div>
 
-    <!-- 4. Local Video Mirroring Container (Có crossorigin="anonymous", độc lập với IPTV) -->
+    <!-- 4. Local Video Mirroring Container (Tương tự iptv-player, độc lập với IPTV) -->
     <div id="local-video-container">
-        <video id="local-video-player" playsinline autoplay crossorigin="anonymous"></video>
+        <video id="local-video-player" playsinline autoplay></video>
         <!-- Loading Spinner cho Video Cục Bộ -->
         <div id="local-video-loading">
             <div class="spinner"></div>
@@ -1822,6 +1823,7 @@
             };
 
             localVideoPlayer.src = data.videoUrl;
+            try { localVideoPlayer.load(); } catch (e) {}
             applyLocalVideoOrientation();
 
             const p = localVideoPlayer.play();
