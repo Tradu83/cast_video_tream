@@ -1171,6 +1171,22 @@
                 iptvVideo.pause();
             } catch (e) {}
 
+            // PROBE KIỂM TRA ĐƯỜNG TRUYỀN VÀ CORS
+            (async () => {
+                try {
+                    const serverOrigin = streamUrl.substring(0, streamUrl.indexOf('/', 8));
+                    const pingUrl = serverOrigin + '/ping';
+                    log(`[PROBE] Bắt đầu kiểm tra kết nối TV -> điện thoại (${pingUrl})...`, 'D');
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => ctrl.abort(), 4000);
+                    const probeResp = await fetch(pingUrl, { method: 'GET', signal: ctrl.signal });
+                    clearTimeout(timer);
+                    log(`[PROBE] TV KẾT NỐI MÁY CHỦ THÀNH CÔNG! HTTP ${probeResp.status}`, 'I');
+                } catch (probeErr) {
+                    log(`[PROBE] TV KHÔNG THỂ KẾT NỐI MÁY CHỦ HTTP: ${probeErr.name} - ${probeErr.message}`, 'W');
+                }
+            })();
+
             return new Promise((resolve) => {
                 let resolved = false;
 
@@ -1226,7 +1242,7 @@
                     }
                 };
                 const onCanPlay = () => {
-                    log(`Video HTML5: canplay (đã sẵn sàng, bắt đầu phát)...`, 'I');
+                    log(`Video HTML5: canplay (đã sẵn sàng, gọi play())...`, 'I');
                     const p = iptvVideo.play();
                     if (p !== undefined) {
                         p.then(() => onPlaying()).catch(err => {
@@ -1263,39 +1279,40 @@
                 iptvVideo.addEventListener('waiting', onWaiting);
                 iptvVideo.addEventListener('stalled', onStalled);
 
+                // Gán nguồn và gọi load() dứt khoát
                 iptvVideo.src = streamUrl;
                 iptvVideo.muted = false;
                 iptvVideo.volume = 1.0;
-
-                const playPromise = iptvVideo.play();
-                if (playPromise !== undefined) {
-                    playPromise.then(() => {
-                        onPlaying();
-                    }).catch(err => {
-                        if (err.name === 'AbortError') {
-                            log('play() được hoãn để nạp dữ liệu (AbortError bình thường): chờ canplay...', 'D');
-                        } else if (err.name === 'NotAllowedError') {
-                            log('Chính sách Autoplay yêu cầu muted trước...', 'W');
-                            iptvVideo.muted = true;
-                            iptvVideo.play().then(() => onPlaying()).catch(() => {});
-                        } else {
-                            log('Native play promise notice: ' + err.name + ': ' + err.message, 'W');
-                        }
-                    });
+                try {
+                    iptvVideo.load();
+                    log('Đã gọi iptvVideo.load() cho luồng video', 'D');
+                } catch (loadErr) {
+                    log('Lỗi gọi iptvVideo.load(): ' + loadErr.message, 'W');
                 }
+
+                // Không gọi play() ngay lập tức để tránh AbortError
+                // Nếu sau 2.5s mà readyState >= 2 (đã có dữ liệu) thì chủ động gọi play()
+                setTimeout(() => {
+                    if (!resolved && iptvVideo.readyState >= 2 && iptvVideo.paused) {
+                        log('Chủ động gọi play() sau khi nạp dữ liệu (readyState=' + iptvVideo.readyState + ')', 'D');
+                        iptvVideo.play().then(() => onPlaying()).catch(e => {
+                            if (e.name !== 'AbortError') log('Lỗi chủ động play: ' + e.message, 'W');
+                        });
+                    }
+                }, 2500);
 
                 setTimeout(() => {
                     if (!resolved) {
                         if (!iptvVideo.paused && iptvVideo.currentTime > 0) {
                             onPlaying();
                         } else {
-                            log(`Native video timeout sau 15s: paused=${iptvVideo.paused}, currentTime=${iptvVideo.currentTime}, readyState=${iptvVideo.readyState}`, 'W');
+                            log(`Native video timeout sau 12s: paused=${iptvVideo.paused}, currentTime=${iptvVideo.currentTime}, readyState=${iptvVideo.readyState}, networkState=${iptvVideo.networkState}`, 'W');
                             resolved = true;
                             cleanupListeners();
                             resolve(false);
                         }
                     }
-                }, 15000);
+                }, 12000);
             });
         }
 
@@ -1408,6 +1425,10 @@
             else if (urlLower.includes('.mp4') || urlLower.includes('.mkv') || urlLower.includes('.webm') || urlLower.includes('.mov') || manifestType === 'mp4' || manifestType === 'video') {
                 log('Executing Direct MP4/Video pipeline for local/LAN media...');
                 success = await playWithNativeVideo(rawUrl, channelData);
+                if (!success) {
+                    log('Native HTML5 video engine failed, attempting Shaka Player fallback for MP4...', 'W');
+                    success = await playWithShaka(rawUrl, channelData);
+                }
             }
             else {
                 log('Executing Generic Stream pipeline...');
