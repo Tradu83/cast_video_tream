@@ -655,7 +655,6 @@
                 iptvVideo.style.height = '100%';
                 iptvVideo.style.transform = 'none';
                 iptvVideo.style.objectFit = 'contain';
-                iptvVideo.load();
             } catch (e) {}
             iptvVideo.muted = false;
             iptvVideo.volume = 1.0;
@@ -1167,10 +1166,14 @@
         }
 
         async function playWithNativeVideo(streamUrl, channelData) {
-            log('Attempting Native HTML5 Video element playback: ' + streamUrl);
-            resetVideoElement();
+            log('Attempting Native HTML5 Video element playback: ' + streamUrl, 'I');
+            try {
+                iptvVideo.pause();
+            } catch (e) {}
+
             return new Promise((resolve) => {
                 let resolved = false;
+
                 const onPlaying = () => {
                     if (!resolved) {
                         resolved = true;
@@ -1180,17 +1183,20 @@
                         hideIptvLoading();
                         showIptvBanner(channelData);
                         notifyIptvStarted(channelData);
-                        if (currentMode === "LOCAL_VIDEO") {
+                        if (currentMode === "LOCAL_VIDEO" || channelData.isLocalVideo) {
                             applyLocalVideoOrientation();
                         }
                         resolve(true);
                     }
                 };
+
                 const onError = (e) => {
+                    const err = iptvVideo.error;
+                    if (!err && !resolved) return;
+
                     if (!resolved) {
                         resolved = true;
                         cleanupListeners();
-                        const err = iptvVideo.error;
                         let errDesc = "Không có mã lỗi chi tiết";
                         let errCode = 0;
                         if (err) {
@@ -1211,14 +1217,35 @@
                         resolve(false);
                     }
                 };
-                const onLoadStart = () => log(`Video HTML5: loadstart (${streamUrl})`);
-                const onLoadedMetadata = () => log(`Video HTML5: loadedmetadata (${iptvVideo.videoWidth}x${iptvVideo.videoHeight}, ${iptvVideo.duration}s)`);
+
+                const onLoadStart = () => log(`Video HTML5: loadstart (${streamUrl})`, 'I');
+                const onLoadedMetadata = () => {
+                    log(`Video HTML5: loadedmetadata (${iptvVideo.videoWidth}x${iptvVideo.videoHeight}, ${iptvVideo.duration}s)`, 'I');
+                    if (currentMode === "LOCAL_VIDEO" || channelData.isLocalVideo) {
+                        applyLocalVideoOrientation();
+                    }
+                };
+                const onCanPlay = () => {
+                    log(`Video HTML5: canplay (đã sẵn sàng, bắt đầu phát)...`, 'I');
+                    const p = iptvVideo.play();
+                    if (p !== undefined) {
+                        p.then(() => onPlaying()).catch(err => {
+                            if (err.name === 'NotAllowedError') {
+                                log('Chính sách autoplay yêu cầu muted trước, thử tắt tiếng...', 'W');
+                                iptvVideo.muted = true;
+                                iptvVideo.play().then(() => onPlaying()).catch(e => log('Lỗi play khi tắt tiếng: ' + e.message, 'E'));
+                            } else if (err.name !== 'AbortError') {
+                                log('Lỗi canplay play(): ' + err.name + ': ' + err.message, 'W');
+                            }
+                        });
+                    }
+                };
                 const onWaiting = () => log(`Video HTML5: waiting (đang đệm dữ liệu)...`, 'W');
                 const onStalled = () => log(`Video HTML5: stalled (đường truyền tạm dừng)...`, 'W');
 
                 function cleanupListeners() {
                     iptvVideo.removeEventListener('playing', onPlaying);
-                    iptvVideo.removeEventListener('canplay', onPlaying);
+                    iptvVideo.removeEventListener('canplay', onCanPlay);
                     iptvVideo.removeEventListener('loadeddata', onPlaying);
                     iptvVideo.removeEventListener('error', onError);
                     iptvVideo.removeEventListener('loadstart', onLoadStart);
@@ -1226,8 +1253,9 @@
                     iptvVideo.removeEventListener('waiting', onWaiting);
                     iptvVideo.removeEventListener('stalled', onStalled);
                 }
+
                 iptvVideo.addEventListener('playing', onPlaying);
-                iptvVideo.addEventListener('canplay', onPlaying);
+                iptvVideo.addEventListener('canplay', onCanPlay);
                 iptvVideo.addEventListener('loadeddata', onPlaying);
                 iptvVideo.addEventListener('error', onError);
                 iptvVideo.addEventListener('loadstart', onLoadStart);
@@ -1238,19 +1266,21 @@
                 iptvVideo.src = streamUrl;
                 iptvVideo.muted = false;
                 iptvVideo.volume = 1.0;
-                try { iptvVideo.load(); } catch (e) {}
 
                 const playPromise = iptvVideo.play();
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
                         onPlaying();
                     }).catch(err => {
-                        log('Native play promise error: ' + err.name + ': ' + err.message, 'W');
-                        iptvVideo.muted = true;
-                        iptvVideo.play().then(() => {
-                            setTimeout(() => { iptvVideo.muted = false; }, 300);
-                            onPlaying();
-                        }).catch(() => onError(err));
+                        if (err.name === 'AbortError') {
+                            log('play() được hoãn để nạp dữ liệu (AbortError bình thường): chờ canplay...', 'D');
+                        } else if (err.name === 'NotAllowedError') {
+                            log('Chính sách Autoplay yêu cầu muted trước...', 'W');
+                            iptvVideo.muted = true;
+                            iptvVideo.play().then(() => onPlaying()).catch(() => {});
+                        } else {
+                            log('Native play promise notice: ' + err.name + ': ' + err.message, 'W');
+                        }
                     });
                 }
 
@@ -1259,13 +1289,13 @@
                         if (!iptvVideo.paused && iptvVideo.currentTime > 0) {
                             onPlaying();
                         } else {
-                            log(`Native video timeout sau 6s: paused=${iptvVideo.paused}, currentTime=${iptvVideo.currentTime}, readyState=${iptvVideo.readyState}`, 'W');
+                            log(`Native video timeout sau 15s: paused=${iptvVideo.paused}, currentTime=${iptvVideo.currentTime}, readyState=${iptvVideo.readyState}`, 'W');
                             resolved = true;
                             cleanupListeners();
                             resolve(false);
                         }
                     }
-                }, 6000);
+                }, 15000);
             });
         }
 
@@ -1288,7 +1318,11 @@
             lastPlayRequest = { url: rawUrl, timestamp: now };
 
             log('Starting adaptive IPTV playback for: ' + JSON.stringify(channelData));
-            currentMode = "IPTV";
+            if (channelData.isLocalVideo || currentMode === "LOCAL_VIDEO" || (channelData.manifestType || "").toLowerCase() === 'mp4') {
+                currentMode = "LOCAL_VIDEO";
+            } else {
+                currentMode = "IPTV";
+            }
             activeChannelData = channelData;
 
             // 1. Hide Splash, YouTube & Photo Layer
@@ -1628,6 +1662,7 @@
                 channelName: data.title || "Video điện thoại",
                 groupTitle: "Phản chiếu điện thoại",
                 manifestType: "mp4",
+                isLocalVideo: true,
                 isPortrait: data.isPortrait,
                 rotationDegrees: data.rotationDegrees,
                 rotation: data.rotation || 0
