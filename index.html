@@ -1181,6 +1181,25 @@
                         hideIptvLoading();
                         showIptvBanner(channelData);
                         notifyIptvStarted(channelData);
+
+                        // Phát hiện video mất hình (chỉ có tiếng do TV thiếu phần cứng giải mã codec HEVC/4K)
+                        setTimeout(() => {
+                            if (iptvVideo && !iptvVideo.paused && iptvVideo.currentTime > 0) {
+                                if (iptvVideo.videoWidth === 0 && (channelData.manifestType === 'mp4' || (channelData.groupTitle && channelData.groupTitle.includes('điện thoại')))) {
+                                    log('CẢNH BÁO: Video chỉ có tiếng mất hình (videoWidth=0). TV không hỗ trợ giải mã phần cứng cho codec này (thường là HEVC/H.265 hoặc 4K 10-bit).');
+                                    showIptvLoading("TV không hỗ trợ giải mã hình ảnh video này (HEVC/4K). Đang phát âm thanh...");
+                                    setTimeout(hideIptvLoading, 4000);
+                                    try {
+                                        context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, {
+                                            type: "LOCAL_VIDEO_CODEC_UNSUPPORTED",
+                                            title: channelData.channelName,
+                                            message: "TV không hỗ trợ bộ giải mã phần cứng chuẩn nén video này (HEVC/H.265 hoặc 4K). Chỉ phát được âm thanh."
+                                        });
+                                    } catch (e) {}
+                                }
+                            }
+                        }, 1800);
+
                         resolve(true);
                     }
                 };
@@ -1338,7 +1357,7 @@
                     success = await playWithNativeVideo(rawUrl, channelData);
                 }
             }
-            else if (urlLower.includes('.mp4') || urlLower.includes('.mkv') || urlLower.includes('.webm') || urlLower.includes('.mov') || manifestType === 'mp4' || manifestType === 'video') {
+            else if (urlLower.includes('.mp4') || urlLower.includes('.mkv') || urlLower.includes('.webm') || urlLower.includes('.mov') || manifestType === 'mp4' || manifestType === 'video' || (channelData.groupTitle && channelData.groupTitle.includes('điện thoại'))) {
                 log('Executing Direct MP4/Video pipeline for local/LAN media...');
                 success = await playWithNativeVideo(rawUrl, channelData);
                 if (!success) {
