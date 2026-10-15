@@ -2,7 +2,7 @@
 <html lang="vi">
 <!--
   ===================================================================================
- 
+
   ===================================================================================
 -->
 <head>
@@ -401,7 +401,7 @@
     <div id="splash-screen">
         <img src="my_logo.png" alt="Ready to Cast" onerror="this.src='https://img-zlr1.tv360.vn/image1/2026/04/15/22/1776266760359/ba1ca843cd06_480_270.png'">
         <p style="color: white; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 4px black; margin-top: 24px; text-align: center;">
-            CHIẾU YOUTUBE KARAOKE & TRUYỀN HÌNH IPTV 360TV
+            CHIẾU YOUTUBE & TRUYỀN HÌNH & MEDIA
         </p>
         <span style="color: #A5F3FC; font-size: 16px; margin-top: 8px;">
             Sẵn sàng kết nối Google Cast TV & Phản chiếu Media
@@ -512,8 +512,18 @@
         let lastPlayRequest = { url: null, timestamp: 0 };
         let currentPhotoRotation = 0;
 
-        function log(message) {
+        function log(message, level = 'I') {
             console.log('[Cast Receiver]', message);
+            try {
+                if (typeof context !== 'undefined' && context && typeof CUSTOM_NAMESPACE !== 'undefined') {
+                    context.sendCustomMessage(CUSTOM_NAMESPACE, undefined, {
+                        type: "RECEIVER_LOG",
+                        level: level,
+                        tag: "TV",
+                        message: String(message)
+                    });
+                }
+            } catch (e) {}
         }
 
         // YouTube IFrame API Ready Callback
@@ -638,6 +648,13 @@
                 if (iptvVideo.srcObject) {
                     iptvVideo.srcObject = null;
                 }
+                iptvVideo.style.position = '';
+                iptvVideo.style.top = '';
+                iptvVideo.style.left = '';
+                iptvVideo.style.width = '100%';
+                iptvVideo.style.height = '100%';
+                iptvVideo.style.transform = 'none';
+                iptvVideo.style.objectFit = 'contain';
                 iptvVideo.load();
             } catch (e) {}
             iptvVideo.muted = false;
@@ -1154,6 +1171,7 @@
             resetVideoElement();
             return new Promise((resolve) => {
                 let resolved = false;
+
                 const onPlaying = () => {
                     if (!resolved) {
                         resolved = true;
@@ -1166,6 +1184,7 @@
                         resolve(true);
                     }
                 };
+
                 const onError = (e) => {
                     if (!resolved) {
                         resolved = true;
@@ -1174,11 +1193,13 @@
                         resolve(false);
                     }
                 };
+
                 function cleanupListeners() {
                     iptvVideo.removeEventListener('playing', onPlaying);
                     iptvVideo.removeEventListener('canplay', onPlaying);
                     iptvVideo.removeEventListener('error', onError);
                 }
+
                 iptvVideo.addEventListener('playing', onPlaying);
                 iptvVideo.addEventListener('canplay', onPlaying);
                 iptvVideo.addEventListener('error', onError);
@@ -1227,7 +1248,7 @@
             }
 
             const now = Date.now();
-            if (lastPlayRequest.url === rawUrl && (now - lastPlayRequest.timestamp) < 1800) {
+            if (lastPlayRequest.url === rawUrl && (now - lastPlayRequest.timestamp) < 1800 && activeEngine !== "NONE") {
                 log('Ignoring duplicate rapid play request for: ' + rawUrl);
                 return;
             }
@@ -1317,6 +1338,14 @@
                     success = await playWithNativeVideo(rawUrl, channelData);
                 }
             }
+            else if (urlLower.includes('.mp4') || urlLower.includes('.mkv') || urlLower.includes('.webm') || urlLower.includes('.mov') || manifestType === 'mp4' || manifestType === 'video') {
+                log('Executing Direct MP4/Video pipeline for local/LAN media...');
+                success = await playWithNativeVideo(rawUrl, channelData);
+                if (!success) {
+                    log('Native HTML5 video engine failed, attempting Shaka Player fallback for MP4...', 'W');
+                    success = await playWithShaka(rawUrl, channelData);
+                }
+            }
             else {
                 log('Executing Generic Stream pipeline...');
                 success = await playWithHlsJs(rawUrl, channelData);
@@ -1343,14 +1372,21 @@
             const drmEl = document.getElementById('iptv-banner-drm');
             const formatEl = document.getElementById('iptv-banner-format');
 
-            titleEl.textContent = data.channelName || data.name || "Kênh TV";
-            groupEl.textContent = data.groupTitle || "Truyền hình 360TV";
-
-            if (data.logoUrl && data.logoUrl.trim().length > 0) {
-                logoEl.src = data.logoUrl;
-                logoEl.style.display = 'block';
-            } else {
+            const isPhoneVideo = (data.manifestType === 'mp4') || (data.groupTitle && data.groupTitle.includes('điện thoại'));
+            if (isPhoneVideo) {
+                titleEl.textContent = data.channelName || "Video điện thoại";
+                groupEl.textContent = "Phản chiếu điện thoại";
                 logoEl.style.display = 'none';
+            } else {
+                titleEl.textContent = data.channelName || data.name || "Kênh TV";
+                groupEl.textContent = data.groupTitle || "Truyền hình 360TV";
+
+                if (data.logoUrl && data.logoUrl.trim().length > 0) {
+                    logoEl.src = data.logoUrl;
+                    logoEl.style.display = 'block';
+                } else {
+                    logoEl.style.display = 'none';
+                }
             }
 
             if (data.licenseKey && data.licenseKey.trim().length > 0) {
@@ -1370,7 +1406,7 @@
             } else if (activeEngine === "HLS" || streamUrl.includes('.m3u8') || manifestType === 'hls') {
                 formatText = "HLS Stream (Hls.js)";
             } else if (activeEngine === "NATIVE") {
-                formatText = "Direct Hardware (Native)";
+                formatText = isPhoneVideo ? "Video điện thoại (LAN)" : "Direct Hardware (Native)";
             }
             formatEl.textContent = formatText;
 
@@ -1485,6 +1521,17 @@
             photoBannerTimer = setTimeout(() => {
                 photoBanner.classList.remove('visible');
             }, 3000);
+        }
+
+        function zoomPanPhoto(data) {
+            if (currentMode !== "PHOTO" || !photoImg) return;
+            const scale = data.scale || 1;
+            const x = data.x || 0;
+            const y = data.y || 0;
+            if (data.mode) {
+                photoImg.style.objectFit = data.mode === "contain" ? "contain" : "cover";
+            }
+            photoImg.style.transform = `translate(${x}px, ${y}px) rotate(${currentPhotoRotation}deg) scale(${scale})`;
         }
 
         function stopPhoto() {
@@ -1713,6 +1760,20 @@
                 stopPhoto();
             } else if (data.type === "PLAY_LOCAL_VIDEO") {
                 playLocalVideo(data);
+            } else if (data.type === "TOGGLE_LOCAL_VIDEO" || data.type === "PLAY_PAUSE_LOCAL_VIDEO") {
+                if (iptvVideo) {
+                    if (iptvVideo.paused) iptvVideo.play().catch(e => log('Resume error: ' + e.message));
+                    else iptvVideo.pause();
+                }
+            } else if (data.type === "SEEK_LOCAL_VIDEO") {
+                const targetSec = data.positionSec || (data.positionMs ? data.positionMs / 1000.0 : 0);
+                if (iptvVideo && !isNaN(targetSec)) {
+                    iptvVideo.currentTime = targetSec;
+                }
+            } else if (data.type === "STOP_LOCAL_VIDEO") {
+                stopIptv();
+            } else if (data.type === "ZOOM_PAN_PHOTO") {
+                zoomPanPhoto(data);
             } else if (data.type === "JUMP_TO" || data.type === "PLAY_NEXT") {
                 if (data.media) {
                     loadVideoFromMessage(data.media);
@@ -1721,6 +1782,53 @@
                 window.rewardNotificationEnabled = data.enabled;
             }
         });
+
+        // [MỚI] HÀM DỌN DẸP SẠCH BỘ NHỚ VÀ TÀI NGUYÊN GPU TIVI (HARD CLEANUP)
+        function hardCleanupAllPlayers() {
+            log('Executing hardCleanupAllPlayers: Clearing all player instances, memory and GPU resources...');
+            cleanupCurrentIptvPlayer();
+            const existingAudio = document.getElementById('iptv-audio');
+            if (existingAudio) {
+                try {
+                    existingAudio.pause();
+                    existingAudio.removeAttribute('src');
+                    existingAudio.load();
+                    existingAudio.remove();
+                } catch (e) {}
+            }
+            if (typeof iptvContainer !== 'undefined' && iptvContainer) {
+                iptvContainer.style.display = 'none';
+            }
+            if (typeof iptvVideo !== 'undefined' && iptvVideo) {
+                try {
+                    iptvVideo.pause();
+                    iptvVideo.removeAttribute('src');
+                    iptvVideo.load();
+                } catch (e) {}
+            }
+            if (typeof ytPlayer !== 'undefined' && ytPlayer && typeof ytPlayer.stopVideo === 'function') {
+                try {
+                    ytPlayer.stopVideo();
+                    ytPlayer.clearVideo();
+                } catch (e) {}
+            }
+            if (typeof ytPlayerContainer !== 'undefined' && ytPlayerContainer) {
+                ytPlayerContainer.style.display = 'none';
+            }
+            if (typeof stopPhoto === 'function') {
+                try { stopPhoto(); } catch (e) {}
+            }
+            if (typeof hideIptvLoading === 'function') hideIptvLoading();
+            if (typeof iptvBanner !== 'undefined' && iptvBanner) {
+                iptvBanner.classList.remove('visible');
+            }
+            if (typeof viewerOverlay !== 'undefined' && viewerOverlay) {
+                viewerOverlay.style.opacity = 0;
+            }
+            if (typeof currentMode !== 'undefined') {
+                currentMode = "IDLE";
+            }
+        }
 
         // =========================================================================
         // 8. CAF RECEIVER INTERCEPTORS
@@ -1739,7 +1847,7 @@
 
                 // [MỚI] Xác định Video ID Youtube để tránh bị bắt nhầm vào nhánh IPTV
                 const ytId = window.extractYouTubeId(contentId) || window.extractYouTubeId(customData.videoId) || window.extractYouTubeId(customData.streamUrl);
-                const isYouTubeMedia = (ytId !== null && (contentIdLower.includes('youtube.com') || contentIdLower.includes('youtu.be')));
+                const isYouTubeMedia = ytId !== null && (contentIdLower.includes('youtube.com') || contentIdLower.includes('youtu.be') || contentId.length === 11 || (customData && customData.videoId));
                 const forceYouTube = customData.mediaType === "YOUTUBE" || customData.type === "PLAY_YOUTUBE";
 
                 // Case A: Local Photo
@@ -1823,7 +1931,7 @@
         playerManager.setMessageInterceptor(
             cast.framework.messages.MessageType.STOP,
             () => {
-                if (currentMode === "IPTV") {
+                if (currentMode === "IPTV" || currentMode === "LOCAL_VIDEO") {
                     stopIptv();
                 } else if (currentMode === "PHOTO") {
                     stopPhoto();
